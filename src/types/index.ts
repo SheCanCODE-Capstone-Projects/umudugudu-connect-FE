@@ -141,3 +141,15 @@ export interface ApiError {
   code:      string;
   timestamp: string;
 }
+
+// ─── Role Assignment (US-1.2) ─────────────────────────────────────
+export interface UpdateRolePayload {
+  userId: string;
+  role:   UserRole;
+}
+
+export interface UserSearchParams {
+  phone?: string;
+  name?:  string;
+  role?:  UserRole;
+}

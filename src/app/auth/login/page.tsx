@@ -215,7 +215,7 @@ export default function LoginPage() {
             aria-label="Go back"
             className="grid h-7 w-7 place-items-center text-emerald-800 outline-1  outline-sky-500 transition hover:bg-emerald-50"
           >
-            <ArrowLeft className="h-5 w-5" strokeWidth={2.3} />
+            {/* <ArrowLeft className="h-5 w-5" strokeWidth={2.3} /> */}
           </Link>
           <p className="text-sm font-bold text-emerald-800">Umudugudu Connect</p>
         </div>
@@ -234,7 +234,7 @@ export default function LoginPage() {
           </div>
 
           <h1 className="mt-4 text-center text-2xl font-extrabold leading-tight tracking-normal text-gray-950">
-            Welcome Back
+            Welcome Back 
           </h1>
           <p className="mt-2 max-w-[21rem] text-center text-sm leading-5 text-gray-700">
             Sign in to access your community services and stay informed.

@@ -6,16 +6,16 @@ import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { ArrowLeft, CheckCheck, ChevronDown, Eye, EyeOff } from 'lucide-react';
+import { ArrowLeft, CheckCheck, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { UserRole } from '@/types';
 
-const roles = [
-  { value: '', label: 'Select your role' },
-  { value: 'CITIZEN', label: 'Citizen' },
-  { value: 'ISIBO_LEADER', label: 'Isibo Leader' },
-  { value: 'VILLAGE_LEADER', label: 'Village Leader' },
-  { value: 'ADMIN', label: 'Admin' }, 
-];
+const DEFAULT_USER_ROLE: UserRole = 'CITIZEN';
+const PENDING_OTP_KEY = 'umudugudu_pending_otp_login';
+
+const normalizeRwandaPhone = (value: string) => value.replace(/\D/g, '');
+
+const isValidRwandaPhone = (value: string) => /^07[2389]\d{7}$/.test(normalizeRwandaPhone(value));
 
 const registerSchema = z
   .object({
@@ -29,11 +29,8 @@ const registerSchema = z
       .string()
       .trim()
       .min(1, 'Phone number is required')
-      .regex(/^7[2389]\d{7}$/, 'Enter a valid Rwanda phone number, for example 788000000'),
+      .refine(isValidRwandaPhone, 'Enter a valid 10-digit Rwanda phone number, for example 0788000000'),
     email: z.string().trim().min(1, 'Email is required').email('Enter a valid email address'),
-    role: z.enum(['CITIZEN', 'ISIBO_LEADER', 'VILLAGE_LEADER', 'ADMIN'], {
-      errorMap: () => ({ message: 'Select your role' }),
-    }),
     password: z
       .string()
       .min(8, 'Password must be at least 8 characters')
@@ -49,6 +46,34 @@ const registerSchema = z
 
 type RegisterFormValues = z.infer<typeof registerSchema>;
 
+const REGISTERED_USERS_KEY = 'umudugudu_registered_users';
+
+type StoredUser = {
+  fullName: string;
+  phoneNumber: string;
+  email: string;
+  role: UserRole | null;
+  password: string;
+  registeredAt?: number;
+  roleAssignedAt?: number;
+  isVerified?: boolean;
+  verifiedAt?: number;
+};
+
+const getStoredUsers = () => {
+  try {
+    return JSON.parse(localStorage.getItem(REGISTERED_USERS_KEY) ?? '[]') as StoredUser[];
+  } catch {
+    return [];
+  }
+};
+
+const maskEmail = (email: string) => {
+  const [name, domain] = email.split('@');
+  if (!name || !domain) return email;
+  return `${name.slice(0, 2)}${'*'.repeat(Math.max(name.length - 2, 3))}@${domain}`;
+};
+
 export default function RegisterPage() {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
@@ -62,7 +87,6 @@ export default function RegisterPage() {
       fullName: '',
       phoneNumber: '',
       email: '',
-      role: undefined,
       password: '',
       confirmPassword: '',
     },
@@ -75,9 +99,43 @@ export default function RegisterPage() {
         : 'border-gray-300 focus:border-emerald-700 focus:ring-emerald-100'
     } ${extra}`;
 
-  const onSubmit = async () => {
-    toast.success('Account details validated successfully');
-    router.push('/auth/login');
+  const onSubmit = async (values: RegisterFormValues) => {
+    /*
+      Frontend-only demo storage until backend registration exists.
+      Backend should own user creation and password storage in production.
+    */
+    const normalizedEmail = values.email.toLowerCase();
+    const existingUsers = getStoredUsers();
+    const nextUsers = [
+      ...existingUsers.filter((user) => user.email !== normalizedEmail),
+      {
+        fullName: values.fullName,
+        phoneNumber: normalizeRwandaPhone(values.phoneNumber),
+        email: normalizedEmail,
+        role: DEFAULT_USER_ROLE,
+        password: values.password,
+        registeredAt: Date.now(),
+        roleAssignedAt: Date.now(),
+        isVerified: false,
+      },
+    ];
+
+    localStorage.setItem(REGISTERED_USERS_KEY, JSON.stringify(nextUsers));
+    sessionStorage.setItem(
+      PENDING_OTP_KEY,
+      JSON.stringify({
+        purpose: 'registration',
+        email: normalizedEmail,
+        fullName: values.fullName,
+        maskedEmail: maskEmail(normalizedEmail),
+        contactLabel: maskEmail(normalizedEmail),
+        role: DEFAULT_USER_ROLE,
+        dashboardPath: '/auth/login',
+        requestedAt: Date.now(),
+      })
+    );
+    toast.success('OTP code sent for account verification');
+    router.push('/auth/otp-login');
   };
 
   return (
@@ -125,25 +183,21 @@ export default function RegisterPage() {
             <label htmlFor="phoneNumber" className="mb-2 block text-xs font-medium text-gray-950">
               Phone Number
             </label>
-            <div className="grid grid-cols-[5.35rem_1fr] gap-2">
-              <button
-                type="button"
-                className="flex h-10 items-center justify-center gap-1 rounded-md border border-gray-300 bg-white px-2 text-xs font-medium text-gray-950"
-                aria-label="Rwanda phone code"
-              >
-                <span>RW +250</span>
-                <ChevronDown className="h-3.5 w-3.5 text-emerald-800" strokeWidth={2.4} />
-              </button>
-              <input
-                id="phoneNumber"
-                type="tel"
-                inputMode="numeric"
-                aria-invalid={errors.phoneNumber ? 'true' : 'false'}
-                placeholder="788 000 000"
-                className={inputClass(Boolean(errors.phoneNumber))}
-                {...register('phoneNumber')}
-              />
-            </div>
+            <input
+              id="phoneNumber"
+              type="tel"
+              inputMode="numeric"
+              maxLength={10}
+              aria-invalid={errors.phoneNumber ? 'true' : 'false'}
+              placeholder="0788000000"
+              className={inputClass(Boolean(errors.phoneNumber))}
+              onInput={(event) => {
+                event.currentTarget.value = normalizeRwandaPhone(event.currentTarget.value).slice(0, 10);
+              }}
+              {...register('phoneNumber', {
+                setValueAs: (value) => normalizeRwandaPhone(value),
+              })}
+            />
             {errors.phoneNumber ? <p className="mt-1 text-xs font-medium text-red-600">{errors.phoneNumber.message}</p> : null}
           </div>
 
@@ -160,33 +214,6 @@ export default function RegisterPage() {
               {...register('email')}
             />
             {errors.email ? <p className="mt-1 text-xs font-medium text-red-600">{errors.email.message}</p> : null}
-          </div>
-
-          <div>
-            <label htmlFor="role" className="mb-2 block text-xs font-medium text-gray-950">
-              User Role
-            </label>
-            <div className="relative">
-              <select
-                id="role"
-                defaultValue=""
-                aria-invalid={errors.role ? 'true' : 'false'}
-                className={inputClass(Boolean(errors.role), 'appearance-none pr-10 font-medium')}
-                {...register('role')}
-              >
-                {roles.map((role) => (
-                  <option key={role.value || 'placeholder'} value={role.value} disabled={!role.value}>
-                    {role.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                aria-hidden="true"
-                className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-500"
-                strokeWidth={2}
-              />
-            </div>
-            {errors.role ? <p className="mt-1 text-xs font-medium text-red-600">{errors.role.message}</p> : null}
           </div>
 
           <div>

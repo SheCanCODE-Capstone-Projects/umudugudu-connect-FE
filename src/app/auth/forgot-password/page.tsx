@@ -1,11 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { ArrowLeft, CheckCircle2, Mail, Send } from 'lucide-react';
+import { ArrowLeft, Mail, Send } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const forgotPasswordSchema = z.object({
@@ -14,11 +14,33 @@ const forgotPasswordSchema = z.object({
 
 type ForgotPasswordFormValues = z.infer<typeof forgotPasswordSchema>;
 
+const PENDING_RESET_KEY = 'umudugudu_pending_password_reset';
+const REGISTERED_USERS_KEY = 'umudugudu_registered_users';
+
+type StoredUser = {
+  email: string;
+};
+
+const getStoredUsers = () => {
+  try {
+    return JSON.parse(localStorage.getItem(REGISTERED_USERS_KEY) ?? '[]') as StoredUser[];
+  } catch {
+    return [];
+  }
+};
+
+const maskEmail = (email: string) => {
+  const [name, domain] = email.split('@');
+  if (!name || !domain) return email;
+  return `${name.slice(0, 2)}${'*'.repeat(Math.max(name.length - 2, 3))}@${domain}`;
+};
+
 export default function ForgotPasswordPage() {
-  const [sentEmail, setSentEmail] = useState('');
+  const router = useRouter();
   const {
     register,
     handleSubmit,
+    setError,
     formState: { errors, isSubmitting },
   } = useForm<ForgotPasswordFormValues>({
     resolver: zodResolver(forgotPasswordSchema),
@@ -26,8 +48,31 @@ export default function ForgotPasswordPage() {
   });
 
   const onSubmit = async (values: ForgotPasswordFormValues) => {
-    setSentEmail(values.email);
-    toast.success('Password reset request validated');
+    const normalizedEmail = values.email.toLowerCase();
+    const registeredUser = getStoredUsers().find((user) => user.email === normalizedEmail);
+
+    if (!registeredUser) {
+      sessionStorage.removeItem(PENDING_RESET_KEY);
+      setError('email', { type: 'manual', message: 'No account found with this email address' });
+      toast.error('No account found with this email address');
+      return;
+    }
+
+    /*
+      Backend integration point:
+      POST normalizedEmail to request a password reset OTP.
+      Backend sends the OTP to the registered account email and returns a challengeId.
+    */
+    sessionStorage.setItem(
+      PENDING_RESET_KEY,
+      JSON.stringify({
+        email: normalizedEmail,
+        maskedEmail: maskEmail(normalizedEmail),
+        requestedAt: Date.now(),
+      })
+    );
+    toast.success('Reset OTP code sent to your email');
+    router.push('/auth/reset-password');
   };
 
   return (
@@ -54,7 +99,7 @@ export default function ForgotPasswordPage() {
             Forgot Password
           </h1>
           <p className="mt-2 max-w-[22rem] text-sm leading-6 text-gray-700">
-            Enter your email address and we will prepare a password reset link for your account.
+            Enter your email address and we will prepare a password reset OTP for your account.
           </p>
         </div>
 
@@ -83,21 +128,12 @@ export default function ForgotPasswordPage() {
             {errors.email ? <p className="mt-1 text-xs font-medium text-red-600">{errors.email.message}</p> : null}
           </div>
 
-          {sentEmail ? (
-            <div className="flex items-start gap-2 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-left">
-              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" strokeWidth={2.4} />
-              <p className="text-xs font-medium leading-5 text-emerald-900">
-                Reset instructions are ready for {sentEmail}. Please check your inbox when email service is connected.
-              </p>
-            </div>
-          ) : null}
-
           <button
             type="submit"
             disabled={isSubmitting}
             className="flex h-11 w-full items-center justify-center gap-3 rounded-lg bg-[#008c3a] px-4 text-sm font-bold text-white shadow-sm  outline-1 outline-offset-2  outline-sky-500 transition hover:bg-emerald-800 focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-emerald-700"
           >
-            <span>{isSubmitting ? 'Checking...' : 'Send reset link'}</span>
+            <span>{isSubmitting ? 'Checking...' : 'Send reset OTP code'}</span>
             <Send className="h-4 w-4" strokeWidth={2.8} />
           </button>
         </form>

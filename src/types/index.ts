@@ -141,3 +141,20 @@ export interface ApiError {
   code:      string;
   timestamp: string;
 }
+
+
+
+// ─── Activity Form & API (US-2.1) ────────────────────────────────
+export interface CreateActivityPayload {
+  title:       string;
+  type:        ActivityType;
+  scheduledAt: string;
+  location:    string;
+  villageId:   string;
+}
+
+export interface ActivitySearchParams {
+  type?:    ActivityType;
+  status?:  ActivityStatus;
+  villageId?: string;
+}

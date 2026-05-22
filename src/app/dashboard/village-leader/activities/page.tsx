@@ -58,7 +58,7 @@ export default function ActivitiesPage() {
         </div>
       )}
 
-      {/* Activities List */}
+      {/* Activities Lists */}
       {loading ? (
         <div className="text-center py-12 text-gray-400">Loading activities...</div>
       ) : activities.length === 0 ? (

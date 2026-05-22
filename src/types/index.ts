@@ -142,6 +142,7 @@ export interface ApiError {
   timestamp: string;
 }
 
+<<<<<<< HEAD
 
 
 // ─── Activity Form & API (US-2.1) ────────────────────────────────
@@ -158,3 +159,16 @@ export interface ActivitySearchParams {
   status?:  ActivityStatus;
   villageId?: string;
 }
+=======
+// ─── Role Assignment (US-1.2) ─────────────────────────────────────
+export interface UpdateRolePayload {
+  userId: string;
+  role:   UserRole;
+}
+
+export interface UserSearchParams {
+  phone?: string;
+  name?:  string;
+  role?:  UserRole;
+}
+>>>>>>> main

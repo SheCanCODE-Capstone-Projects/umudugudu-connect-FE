@@ -16,6 +16,7 @@ import {
   WalletCards,
 } from 'lucide-react';
 import type { ActivityStatus, ActivityType, PenaltyStatus, UserRole } from '@/types';
+import LogoutButton, { useRedirectLoggedOut } from '@/components/shared/LogoutButton';
 
 const CURRENT_USER_KEY = 'umudugudu_current_user';
 const ACTIVITIES_KEY = 'umudugudu_activities';
@@ -77,6 +78,8 @@ const formatDateTime = (value: string) =>
 const formatRwf = (value: number) => `${new Intl.NumberFormat('en-RW').format(value)} RWF`;
 
 export default function CitizenDashboard() {
+  useRedirectLoggedOut();
+
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [activities, setActivities] = useState<StoredActivity[]>([]);
   const [notifications, setNotifications] = useState<UserNotification[]>([]);
@@ -130,16 +133,19 @@ export default function CitizenDashboard() {
             <Menu className="h-5 w-5" />
           </button>
           <p className="text-sm font-extrabold text-emerald-800">Umudugudu Connect</p>
-          <Link
-            href="/notifications"
-            aria-label="View notifications"
-            className="relative grid h-8 w-8 place-items-center text-gray-700"
-          >
-            <Bell className="h-5 w-5" />
-            {unreadNotifications.length > 0 ? (
-              <span className="absolute right-1 top-1 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white" />
-            ) : null}
-          </Link>
+          <div className="flex items-center gap-1">
+            <Link
+              href="/notifications"
+              aria-label="View notifications"
+              className="relative grid h-8 w-8 place-items-center text-gray-700"
+            >
+              <Bell className="h-5 w-5" />
+              {unreadNotifications.length > 0 ? (
+                <span className="absolute right-1 top-1 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white" />
+              ) : null}
+            </Link>
+            <LogoutButton className="grid h-8 w-8 place-items-center text-gray-700 transition hover:text-red-600" />
+          </div>
         </div>
       </header>
 

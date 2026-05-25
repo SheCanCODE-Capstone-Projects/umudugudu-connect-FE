@@ -154,6 +154,21 @@ export interface UserSearchParams {
   role?:  UserRole;
 }
 
+// ─── Activity Form & API (US-2.1) ────────────────────────────────
+export interface CreateActivityPayload {
+  title:       string;
+  type:        ActivityType;
+  scheduledAt: string;
+  location:    string;
+  villageId:   string;
+}
+
+export interface ActivitySearchParams {
+  type?:    ActivityType;
+  status?:  ActivityStatus;
+  villageId?: string;
+}
+
 // ─── Activity Performance (US-2.4) ───────────────────────────────
 export interface IsiboAttendance {
   isiboId:      string;
@@ -172,20 +187,4 @@ export interface ActivityPerformance {
   totalAbsent:       number;
   participationRate: number;
   isiboBreakdown:    IsiboAttendance[];
-}
-
-
-// ─── Activity Form & API (US-2.1) ────────────────────────────────
-export interface CreateActivityPayload {
-  title:       string;
-  type:        ActivityType;
-  scheduledAt: string;
-  location:    string;
-  villageId:   string;
-}
-
-export interface ActivitySearchParams {
-  type?:    ActivityType;
-  status?:  ActivityStatus;
-  villageId?: string;
 }

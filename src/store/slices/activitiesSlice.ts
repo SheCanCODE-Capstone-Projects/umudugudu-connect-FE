@@ -1,13 +1,21 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import type { PayloadAction } from '@reduxjs/toolkit';
+<<<<<<< HEAD
 import type { Activity, CreateActivityPayload, ActivitySearchParams, ActivityPerformance } from '@/types';
 import { getActivities, getActivityById, createActivity, getActivityPerformance } from '@/lib/api/activities';
+=======
+import type { Activity, CreateActivityPayload, ActivitySearchParams } from '@/types';
+import { getActivities, getActivityById, createActivity } from '@/lib/api/activities';
+>>>>>>> origin/main
 
 // ─── State ────────────────────────────────────────────────────────
 interface ActivitiesState {
   activities:       Activity[];
   selectedActivity: Activity | null;
+<<<<<<< HEAD
   performance:      ActivityPerformance | null;
+=======
+>>>>>>> origin/main
   loading:          boolean;
   error:            string | null;
   successMessage:   string | null;
@@ -16,7 +24,10 @@ interface ActivitiesState {
 const initialState: ActivitiesState = {
   activities:       [],
   selectedActivity: null,
+<<<<<<< HEAD
   performance:      null,
+=======
+>>>>>>> origin/main
   loading:          false,
   error:            null,
   successMessage:   null,
@@ -57,6 +68,7 @@ export const addActivity = createAsyncThunk(
   }
 );
 
+<<<<<<< HEAD
 export const fetchActivityPerformance = createAsyncThunk(
   'activities/fetchActivityPerformance',
   async (activityId: string, { rejectWithValue }) => {
@@ -68,6 +80,8 @@ export const fetchActivityPerformance = createAsyncThunk(
   }
 );
 
+=======
+>>>>>>> origin/main
 // ─── Slice ────────────────────────────────────────────────────────
 const activitiesSlice = createSlice({
   name: 'activities',
@@ -76,9 +90,12 @@ const activitiesSlice = createSlice({
     clearSelectedActivity(state) {
       state.selectedActivity = null;
     },
+<<<<<<< HEAD
     clearPerformance(state) {
       state.performance = null;
     },
+=======
+>>>>>>> origin/main
     clearMessages(state) {
       state.error = null;
       state.successMessage = null;
@@ -131,6 +148,7 @@ const activitiesSlice = createSlice({
         state.loading = false;
         state.error = action.payload as string;
       });
+<<<<<<< HEAD
 
     // fetchActivityPerformance
     builder
@@ -150,4 +168,10 @@ const activitiesSlice = createSlice({
 });
 
 export const { clearSelectedActivity, clearPerformance, clearMessages } = activitiesSlice.actions;
+=======
+  },
+});
+
+export const { clearSelectedActivity, clearMessages } = activitiesSlice.actions;
+>>>>>>> origin/main
 export default activitiesSlice.reducer;

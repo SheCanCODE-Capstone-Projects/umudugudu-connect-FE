@@ -3,7 +3,10 @@ import type {
   Activity,
   CreateActivityPayload,
   ActivitySearchParams,
+<<<<<<< HEAD
   ActivityPerformance,
+=======
+>>>>>>> origin/main
   ApiResponse,
   PageResponse,
 } from '@/types';
@@ -30,6 +33,7 @@ export const createActivity = async (
 ): Promise<Activity> => {
   const response = await apiClient.post<ApiResponse<Activity>>('/activities', payload);
   return response.data.data;
+<<<<<<< HEAD
 };
 
 // Get activity performance dashboard
@@ -40,4 +44,6 @@ export const getActivityPerformance = async (
     `/activities/${activityId}/performance`
   );
   return response.data.data;
+=======
+>>>>>>> origin/main
 };

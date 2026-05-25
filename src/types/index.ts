@@ -142,6 +142,24 @@ export interface ApiError {
   timestamp: string;
 }
 
+
+
+
+// ─── Activity Form & API (US-2.1) ────────────────────────────────
+export interface CreateActivityPayload {
+  title:       string;
+  type:        ActivityType;
+  scheduledAt: string;
+  location:    string;
+  villageId:   string;
+}
+
+export interface ActivitySearchParams {
+  type?:    ActivityType;
+  status?:  ActivityStatus;
+  villageId?: string;
+}
+
 // ─── Role Assignment (US-1.2) ─────────────────────────────────────
 export interface UpdateRolePayload {
   userId: string;
@@ -153,3 +171,4 @@ export interface UserSearchParams {
   name?:  string;
   role?:  UserRole;
 }
+

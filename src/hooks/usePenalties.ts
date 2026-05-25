@@ -4,15 +4,25 @@ import {
   fetchPenaltyById,
   createPenalty,
   createExemption,
+  fetchMyPenalties,
+  fetchIsiboPenalties,
   clearSelectedPenalty,
+  clearIsiboOverview,
   clearMessages,
 } from '@/store/slices/penaltiesSlice';
 import type { PenaltySearchParams, AssignPenaltyPayload, ExemptionPayload } from '@/types';
 
 export const usePenalties = () => {
   const dispatch = useAppDispatch();
-  const { penalties, selectedPenalty, loading, error, successMessage } =
-    useAppSelector((state) => state.penalties);
+  const {
+    penalties,
+    myPenalties,
+    isiboOverview,
+    selectedPenalty,
+    loading,
+    error,
+    successMessage,
+  } = useAppSelector((state) => state.penalties);
 
   const searchPenalties = (params: PenaltySearchParams) => {
     dispatch(fetchPenalties(params));
@@ -30,8 +40,20 @@ export const usePenalties = () => {
     dispatch(createExemption(payload));
   };
 
+  const getMyPenalties = () => {
+    dispatch(fetchMyPenalties());
+  };
+
+  const getIsiboPenalties = (isiboId: string) => {
+    dispatch(fetchIsiboPenalties(isiboId));
+  };
+
   const resetSelectedPenalty = () => {
     dispatch(clearSelectedPenalty());
+  };
+
+  const resetIsiboOverview = () => {
+    dispatch(clearIsiboOverview());
   };
 
   const resetMessages = () => {
@@ -40,6 +62,8 @@ export const usePenalties = () => {
 
   return {
     penalties,
+    myPenalties,
+    isiboOverview,
     selectedPenalty,
     loading,
     error,
@@ -48,7 +72,10 @@ export const usePenalties = () => {
     getPenaltyById,
     assignPenalty,
     exemptAbsence,
+    getMyPenalties,
+    getIsiboPenalties,
     resetSelectedPenalty,
+    resetIsiboOverview,
     resetMessages,
   };
 };

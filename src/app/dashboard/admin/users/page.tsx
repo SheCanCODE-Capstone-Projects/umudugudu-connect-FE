@@ -4,9 +4,12 @@ import { useEffect } from 'react';
 import { useUsers } from '@/hooks/useUsers';
 import { UserSearchBar } from '@/components/shared/UserSearchBar';
 import { UserRoleCard } from '@/components/shared/UserRoleCard';
+import { useRedirectLoggedOut } from '@/components/shared/LogoutButton';
 import type { UserRole, UserSearchParams } from '@/types';
 
 export default function AdminUsersPage() {
+  useRedirectLoggedOut();
+
   const {
     users,
     loading,

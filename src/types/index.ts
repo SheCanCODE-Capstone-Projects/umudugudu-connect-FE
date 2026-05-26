@@ -143,7 +143,17 @@ export interface ApiError {
 }
 
 
+// ─── Role Assignment (US-1.2) ─────────────────────────────────────
+export interface UpdateRolePayload {
+  userId: string;
+  role:   UserRole;
+}
 
+export interface UserSearchParams {
+  phone?: string;
+  name?:  string;
+  role?:  UserRole;
+}
 
 // ─── Activity Form & API (US-2.1) ────────────────────────────────
 export interface CreateActivityPayload {
@@ -160,15 +170,22 @@ export interface ActivitySearchParams {
   villageId?: string;
 }
 
-// ─── Role Assignment (US-1.2) ─────────────────────────────────────
-export interface UpdateRolePayload {
-  userId: string;
-  role:   UserRole;
+// ─── Activity Performance (US-2.4) ───────────────────────────────
+export interface IsiboAttendance {
+  isiboId:      string;
+  isiboName:    string;
+  totalInvited: number;
+  totalPresent: number;
+  totalAbsent:  number;
+  percentage:   number;
 }
 
-export interface UserSearchParams {
-  phone?: string;
-  name?:  string;
-  role?:  UserRole;
+export interface ActivityPerformance {
+  activityId:        string;
+  activityTitle:     string;
+  totalInvited:      number;
+  totalPresent:      number;
+  totalAbsent:       number;
+  participationRate: number;
+  isiboBreakdown:    IsiboAttendance[];
 }
-

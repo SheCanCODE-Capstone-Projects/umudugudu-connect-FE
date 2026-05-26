@@ -189,6 +189,9 @@ export interface ActivityPerformance {
   isiboBreakdown:    IsiboAttendance[];
 }
 
+
+
+
 // ─── Penalties (US-3.1) ───────────────────────────────────────────
 export interface AssignPenaltyPayload {
   citizenId:  string;

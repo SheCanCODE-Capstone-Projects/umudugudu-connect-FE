@@ -113,8 +113,7 @@ export default function AdminDashboard() {
     <div className="p-6">
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
-        <LogoutButton showLabel />
-        
+        <LogoutButton showLabel />        
       </div>
 
       <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">

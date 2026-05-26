@@ -1,11 +1,27 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import type { PayloadAction } from '@reduxjs/toolkit';
-import type { Penalty, AssignPenaltyPayload, ExemptionPayload, PenaltySearchParams } from '@/types';
-import { getPenalties, getPenaltyById, assignPenalty, markExemption } from '@/lib/api/penalties';
+import type {
+  Penalty,
+  AssignPenaltyPayload,
+  ExemptionPayload,
+  PenaltySearchParams,
+  CitizenPenaltyView,
+  IsiboPenaltyOverview,
+} from '@/types';
+import {
+  getPenalties,
+  getPenaltyById,
+  assignPenalty,
+  markExemption,
+  getMyCitizenPenalties,
+  getIsiboPenalties,
+} from '@/lib/api/penalties';
 
 // ─── State ────────────────────────────────────────────────────────
 interface PenaltiesState {
   penalties:       Penalty[];
+  myPenalties:     CitizenPenaltyView[];
+  isiboOverview:   IsiboPenaltyOverview | null;
   selectedPenalty: Penalty | null;
   loading:         boolean;
   error:           string | null;
@@ -14,6 +30,8 @@ interface PenaltiesState {
 
 const initialState: PenaltiesState = {
   penalties:       [],
+  myPenalties:     [],
+  isiboOverview:   null,
   selectedPenalty: null,
   loading:         false,
   error:           null,
@@ -67,6 +85,28 @@ export const createExemption = createAsyncThunk(
   }
 );
 
+export const fetchMyPenalties = createAsyncThunk(
+  'penalties/fetchMyPenalties',
+  async (_, { rejectWithValue }) => {
+    try {
+      return await getMyCitizenPenalties();
+    } catch (err: any) {
+      return rejectWithValue(err.response?.data?.message || 'Failed to fetch your penalties');
+    }
+  }
+);
+
+export const fetchIsiboPenalties = createAsyncThunk(
+  'penalties/fetchIsiboPenalties',
+  async (isiboId: string, { rejectWithValue }) => {
+    try {
+      return await getIsiboPenalties(isiboId);
+    } catch (err: any) {
+      return rejectWithValue(err.response?.data?.message || 'Failed to fetch isibo penalties');
+    }
+  }
+);
+
 // ─── Slice ────────────────────────────────────────────────────────
 const penaltiesSlice = createSlice({
   name: 'penalties',
@@ -75,48 +115,40 @@ const penaltiesSlice = createSlice({
     clearSelectedPenalty(state) {
       state.selectedPenalty = null;
     },
+    clearIsiboOverview(state) {
+      state.isiboOverview = null;
+    },
     clearMessages(state) {
       state.error = null;
       state.successMessage = null;
     },
   },
   extraReducers: (builder) => {
-    // fetchPenalties
     builder
       .addCase(fetchPenalties.pending, (state) => {
-        state.loading = true;
-        state.error = null;
+        state.loading = true; state.error = null;
       })
       .addCase(fetchPenalties.fulfilled, (state, action: PayloadAction<Penalty[]>) => {
-        state.loading = false;
-        state.penalties = action.payload;
+        state.loading = false; state.penalties = action.payload;
       })
       .addCase(fetchPenalties.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
+        state.loading = false; state.error = action.payload as string;
       });
 
-    // fetchPenaltyById
     builder
       .addCase(fetchPenaltyById.pending, (state) => {
-        state.loading = true;
-        state.error = null;
+        state.loading = true; state.error = null;
       })
       .addCase(fetchPenaltyById.fulfilled, (state, action: PayloadAction<Penalty>) => {
-        state.loading = false;
-        state.selectedPenalty = action.payload;
+        state.loading = false; state.selectedPenalty = action.payload;
       })
       .addCase(fetchPenaltyById.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
+        state.loading = false; state.error = action.payload as string;
       });
 
-    // createPenalty
     builder
       .addCase(createPenalty.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-        state.successMessage = null;
+        state.loading = true; state.error = null; state.successMessage = null;
       })
       .addCase(createPenalty.fulfilled, (state, action: PayloadAction<Penalty>) => {
         state.loading = false;
@@ -124,27 +156,44 @@ const penaltiesSlice = createSlice({
         state.penalties.unshift(action.payload);
       })
       .addCase(createPenalty.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
+        state.loading = false; state.error = action.payload as string;
       });
 
-    // createExemption
     builder
       .addCase(createExemption.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-        state.successMessage = null;
+        state.loading = true; state.error = null; state.successMessage = null;
       })
       .addCase(createExemption.fulfilled, (state) => {
         state.loading = false;
         state.successMessage = 'Absence marked as excused successfully';
       })
       .addCase(createExemption.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
+        state.loading = false; state.error = action.payload as string;
+      });
+
+    builder
+      .addCase(fetchMyPenalties.pending, (state) => {
+        state.loading = true; state.error = null;
+      })
+      .addCase(fetchMyPenalties.fulfilled, (state, action: PayloadAction<CitizenPenaltyView[]>) => {
+        state.loading = false; state.myPenalties = action.payload;
+      })
+      .addCase(fetchMyPenalties.rejected, (state, action) => {
+        state.loading = false; state.error = action.payload as string;
+      });
+
+    builder
+      .addCase(fetchIsiboPenalties.pending, (state) => {
+        state.loading = true; state.error = null;
+      })
+      .addCase(fetchIsiboPenalties.fulfilled, (state, action: PayloadAction<IsiboPenaltyOverview>) => {
+        state.loading = false; state.isiboOverview = action.payload;
+      })
+      .addCase(fetchIsiboPenalties.rejected, (state, action) => {
+        state.loading = false; state.error = action.payload as string;
       });
   },
 });
 
-export const { clearSelectedPenalty, clearMessages } = penaltiesSlice.actions;
+export const { clearSelectedPenalty, clearIsiboOverview, clearMessages } = penaltiesSlice.actions;
 export default penaltiesSlice.reducer;

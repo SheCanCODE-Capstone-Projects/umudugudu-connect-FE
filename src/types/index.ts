@@ -190,9 +190,6 @@ export interface ActivityPerformance {
   isiboBreakdown:    IsiboAttendance[];
 }
 
-
-
-
 // ─── Penalties (US-3.1) ───────────────────────────────────────────
 export interface AssignPenaltyPayload {
   citizenId:  string;
@@ -211,4 +208,28 @@ export interface PenaltySearchParams {
   citizenId?:  string;
   activityId?: string;
   status?:     PenaltyStatus;
+}
+
+// ─── Penalties View (US-3.2 & US-3.3) ────────────────────────────
+export interface CitizenPenaltyView {
+  id:            string;
+  activityTitle: string;
+  amountRwf:     number;
+  status:        PenaltyStatus;
+  reason?:       string;
+  paidAt?:       string;
+}
+
+export interface HouseholdPenaltySummary {
+  householdId:      string;
+  householdName:    string;
+  totalOutstanding: number;
+  unpaidCount:      number;
+  penalties:        Penalty[];
+}
+
+export interface IsiboPenaltyOverview {
+  isiboId:    string;
+  isiboName:  string;
+  households: HouseholdPenaltySummary[];
 }

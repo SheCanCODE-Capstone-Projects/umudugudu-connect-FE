@@ -4,6 +4,8 @@ import type {
   AssignPenaltyPayload,
   ExemptionPayload,
   PenaltySearchParams,
+  CitizenPenaltyView,
+  IsiboPenaltyOverview,
   ApiResponse,
   PageResponse,
 } from '@/types';
@@ -37,4 +39,22 @@ export const markExemption = async (
   payload: ExemptionPayload
 ): Promise<void> => {
   await apiClient.post('/penalties/exemption', payload);
+};
+
+// Get citizen's own penalties (US-3.2)
+export const getMyCitizenPenalties = async (): Promise<CitizenPenaltyView[]> => {
+  const response = await apiClient.get<ApiResponse<CitizenPenaltyView[]>>(
+    '/penalties/my-penalties'
+  );
+  return response.data.data;
+};
+
+// Get isibo penalty overview (US-3.3)
+export const getIsiboPenalties = async (
+  isiboId: string
+): Promise<IsiboPenaltyOverview> => {
+  const response = await apiClient.get<ApiResponse<IsiboPenaltyOverview>>(
+    `/penalties/isibo/${isiboId}`
+  );
+  return response.data.data;
 };

@@ -4,9 +4,12 @@ import { useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useUsers } from '@/hooks/useUsers';
 import { RoleSelector } from '@/components/forms/RoleSelector';
+import { useRedirectLoggedOut } from '@/components/shared/LogoutButton';
 import type { UserRole } from '@/types';
 
 export default function UserDetailPage() {
+  useRedirectLoggedOut();
+
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const {

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { UserRole } from '@/types';
+import LogoutButton, { useRedirectLoggedOut } from '@/components/shared/LogoutButton';
 
 const REGISTERED_USERS_KEY = 'umudugudu_registered_users';
 const USER_NOTIFICATIONS_KEY = 'umudugudu_user_notifications';
@@ -57,6 +58,8 @@ const getNotifications = () => {
 };
 
 export default function AdminDashboard() {
+  useRedirectLoggedOut();
+
   const [users, setUsers] = useState<StoredUser[]>([]);
   const [selectedRoles, setSelectedRoles] = useState<Record<string, UserRole>>({});
 
@@ -108,7 +111,11 @@ export default function AdminDashboard() {
 
   return (
     <div className="p-6">
-      <h1 className="mb-6 text-2xl font-bold text-gray-900">Admin Dashboard</h1>
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
+        <LogoutButton showLabel />
+        
+      </div>
 
       <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
         <div className="card">

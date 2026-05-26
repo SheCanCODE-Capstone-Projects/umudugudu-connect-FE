@@ -189,3 +189,26 @@ export interface ActivityPerformance {
   participationRate: number;
   isiboBreakdown:    IsiboAttendance[];
 }
+
+
+
+
+// ─── Penalties (US-3.1) ───────────────────────────────────────────
+export interface AssignPenaltyPayload {
+  citizenId:  string;
+  activityId: string;
+  amountRwf:  number;
+  reason?:    string;
+}
+
+export interface ExemptionPayload {
+  citizenId:  string;
+  activityId: string;
+  reason:     string;
+}
+
+export interface PenaltySearchParams {
+  citizenId?:  string;
+  activityId?: string;
+  status?:     PenaltyStatus;
+}

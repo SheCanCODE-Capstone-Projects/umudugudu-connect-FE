@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
-import { getActivityMembers, saveAttendance } from '@/lib/api/attendance';
+import { getActivityMembers, saveAttendance, syncAttendance } from '@/lib/api/attendance';
 import type { AttendanceRecord, AttendanceStatus } from '@/types';
 
 const OFFLINE_KEY = 'attendance_offline_queue';
@@ -45,7 +45,7 @@ export function useSaveAttendance(activityId: string) {
       const remaining: OfflineEntry[] = [];
       for (const entry of q) {
         try {
-          await saveAttendance(entry.activityId, entry.records);
+          await syncAttendance(entry.activityId, entry.records);
           qc.invalidateQueries({ queryKey: ['attendance', entry.activityId] });
         } catch {
           remaining.push(entry);

@@ -6,8 +6,15 @@ export const getMyRequests = async (): Promise<ServiceRequest[]> => {
   return res.data.data.content;
 };
 
-export const getPendingRequests = async (): Promise<ServiceRequest[]> => {
-  const res = await api.get<ApiResponse<PageResponse<ServiceRequest>>>('/service-requests/pending');
+// Isibo Leader queue
+export const getMyQueue = async (): Promise<ServiceRequest[]> => {
+  const res = await api.get<ApiResponse<PageResponse<ServiceRequest>>>('/service-requests/queue');
+  return res.data.data.content;
+};
+
+// Village Leader / Admin — all queues
+export const getAllQueue = async (): Promise<ServiceRequest[]> => {
+  const res = await api.get<ApiResponse<PageResponse<ServiceRequest>>>('/service-requests/queue/all');
   return res.data.data.content;
 };
 
@@ -23,6 +30,6 @@ export const reviewRequest = async (
   id: string,
   payload: { action: 'APPROVE' | 'REJECT' | 'INFO_REQUIRED'; response: string }
 ): Promise<ServiceRequest> => {
-  const res = await api.patch<ApiResponse<ServiceRequest>>(`/service-requests/${id}/review`, payload);
+  const res = await api.put<ApiResponse<ServiceRequest>>(`/service-requests/${id}/review`, payload);
   return res.data.data;
 };

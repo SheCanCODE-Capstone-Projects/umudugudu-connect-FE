@@ -1,185 +1,167 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import toast from 'react-hot-toast';
-import { UserRole } from '@/types';
+import { useState } from 'react';
+import Link from 'next/link';
+import { useAdminDashboard, useVillageDrillDown } from '@/hooks/useAdmin';
+import { formatRwf } from '@/lib/utils/format';
 import LogoutButton, { useRedirectLoggedOut } from '@/components/shared/LogoutButton';
-
-const REGISTERED_USERS_KEY = 'umudugudu_registered_users';
-const USER_NOTIFICATIONS_KEY = 'umudugudu_user_notifications';
-
-const assignableRoles: Array<{ value: UserRole; label: string }> = [
-  { value: 'CITIZEN', label: 'Citizen' },
-  { value: 'ISIBO_LEADER', label: 'Isibo Leader' },
-  { value: 'VILLAGE_LEADER', label: 'Village Leader' },
-  { value: 'ADMIN', label: 'Admin' },
-];
-
-const roleLabels: Record<UserRole, string> = {
-  CITIZEN: 'Citizen',
-  ISIBO_LEADER: 'Isibo Leader',
-  VILLAGE_LEADER: 'Village Leader',
-  ADMIN: 'Admin',
-};
-
-type StoredUser = {
-  fullName: string;
-  phoneNumber: string;
-  email: string;
-  role: UserRole | null;
-  password: string;
-  registeredAt?: number;
-  roleAssignedAt?: number;
-};
-
-type UserNotification = {
-  id: string;
-  email: string;
-  title: string;
-  message: string;
-  createdAt: number;
-  isRead: boolean;
-};
-
-const getStoredUsers = () => {
-  try {
-    return JSON.parse(localStorage.getItem(REGISTERED_USERS_KEY) ?? '[]') as StoredUser[];
-  } catch {
-    return [];
-  }
-};
-
-const getNotifications = () => {
-  try {
-    return JSON.parse(localStorage.getItem(USER_NOTIFICATIONS_KEY) ?? '[]') as UserNotification[];
-  } catch {
-    return [];
-  }
-};
 
 export default function AdminDashboard() {
   useRedirectLoggedOut();
 
-  const [users, setUsers] = useState<StoredUser[]>([]);
-  const [selectedRoles, setSelectedRoles] = useState<Record<string, UserRole>>({});
+  const { data, isLoading, error } = useAdminDashboard();
+  const [selectedVillageId, setSelectedVillageId] = useState<string | null>(null);
+  const [districtFilter, setDistrictFilter] = useState('');
 
-  useEffect(() => {
-    const storedUsers = getStoredUsers();
-    setUsers(storedUsers);
-    setSelectedRoles(
-      Object.fromEntries(
-        storedUsers.map((user) => [user.email, user.role ?? 'CITIZEN'])
-      ) as Record<string, UserRole>
-    );
-  }, []);
+  const { data: drillDown, isLoading: drillLoading } = useVillageDrillDown(selectedVillageId);
 
-  const assignRole = (email: string) => {
-    const nextRole = selectedRoles[email];
-    const targetUser = users.find((user) => user.email === email);
-    if (!targetUser || !nextRole) return;
-
-    const nextUsers = users.map((user) =>
-      user.email === email
-        ? {
-            ...user,
-            role: nextRole,
-            roleAssignedAt: Date.now(),
-          }
-        : user
-    );
-
-    const nextNotifications = [
-      ...getNotifications(),
-      {
-        id: crypto.randomUUID(),
-        email,
-        title: 'Role assigned',
-        message: `Admin assigned your account role as ${roleLabels[nextRole]}.`,
-        createdAt: Date.now(),
-        isRead: false,
-      },
-    ];
-
-    localStorage.setItem(REGISTERED_USERS_KEY, JSON.stringify(nextUsers));
-    localStorage.setItem(USER_NOTIFICATIONS_KEY, JSON.stringify(nextNotifications));
-    setUsers(nextUsers);
-    toast.success(`${targetUser.fullName} is now ${roleLabels[nextRole]}`);
-  };
-
-  const adminUsers = users.filter((user) => user.role === 'ADMIN').length;
-  const leaderUsers = users.filter((user) => user.role === 'ISIBO_LEADER' || user.role === 'VILLAGE_LEADER').length;
+  const filtered = data?.villages.filter((v) =>
+    districtFilter ? v.villageName.toLowerCase().includes(districtFilter.toLowerCase()) : true
+  ) ?? [];
 
   return (
-    <div className="p-6">
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="p-6 max-w-6xl mx-auto">
+      <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
-        <LogoutButton showLabel />        
-      </div>
-
-      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
-        <div className="card">
-          <p className="text-sm text-gray-500">Registered users</p>
-          <p className="text-2xl font-bold">{users.length}</p>
-        </div>
-        <div className="card">
-          <p className="text-sm text-gray-500">Leaders</p>
-          <p className="text-2xl font-bold">{leaderUsers}</p>
-        </div>
-        <div className="card">
-          <p className="text-sm text-gray-500">Admins</p>
-          <p className="text-2xl font-bold">{adminUsers}</p>
+        <div className="flex items-center gap-3">
+          <Link href="/dashboard/admin/users" className="btn-secondary text-sm">
+            Manage Users
+          </Link>
+          <Link href="/dashboard/admin/audit-log" className="btn-secondary text-sm">
+            Audit Log
+          </Link>
+          <LogoutButton showLabel />
         </div>
       </div>
 
-      <div className="card">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <h2 className="text-lg font-bold text-gray-900">Manage User Roles</h2>
-          <span className="badge-blue">{users.length} users</span>
-        </div>
-
-        {users.length === 0 ? (
-          <p className="py-8 text-center text-sm text-gray-500">No registered users yet.</p>
-        ) : (
-          <div className="space-y-3">
-            {users.map((user) => (
-              <div
-                key={user.email}
-                className="grid gap-3 rounded-lg border border-gray-100 bg-gray-50 p-4 md:grid-cols-[1fr_12rem_7rem]"
-              >
-                <div>
-                  <p className="font-semibold text-gray-900">{user.fullName}</p>
-                  <p className="text-sm text-gray-600">{user.email}</p>
-                  <p className="text-sm text-gray-600">{user.phoneNumber}</p>
-                  <span className={user.role ? 'badge-green mt-2 inline-block' : 'badge-yellow mt-2 inline-block'}>
-                    {user.role ? roleLabels[user.role] : 'Waiting for role'}
-                  </span>
-                </div>
-
-                <select
-                  value={selectedRoles[user.email] ?? 'CITIZEN'}
-                  onChange={(event) =>
-                    setSelectedRoles((roles) => ({
-                      ...roles,
-                      [user.email]: event.target.value as UserRole,
-                    }))
-                  }
-                  className="input-field h-10"
-                >
-                  {assignableRoles.map((role) => (
-                    <option key={role.value} value={role.value}>
-                      {role.label}
-                    </option>
-                  ))}
-                </select>
-
-                <button type="button" onClick={() => assignRole(user.email)} className="btn-primary h-10">
-                  Assign
-                </button>
-              </div>
-            ))}
+      {/* Summary KPIs */}
+      {isLoading ? (
+        <div className="text-center py-8 text-gray-400">Loading dashboard...</div>
+      ) : error ? (
+        <div className="text-center py-8 text-red-500">Failed to load dashboard data</div>
+      ) : data && (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="card">
+              <p className="text-sm text-gray-500">Avg Attendance Rate</p>
+              <p className="text-2xl font-bold text-blue-600">{data.totalAttendanceRate.toFixed(1)}%</p>
+            </div>
+            <div className="card">
+              <p className="text-sm text-gray-500">Total Payments Collected</p>
+              <p className="text-2xl font-bold text-green-600">{formatRwf(data.totalCollectedRwf)}</p>
+            </div>
+            <div className="card">
+              <p className="text-sm text-gray-500">Open Service Requests</p>
+              <p className="text-2xl font-bold text-yellow-600">{data.totalOpenRequests}</p>
+            </div>
           </div>
-        )}
-      </div>
+
+          {/* Filter */}
+          <div className="mb-4">
+            <input
+              type="text"
+              placeholder="Filter by village / district..."
+              value={districtFilter}
+              onChange={(e) => setDistrictFilter(e.target.value)}
+              className="input-field max-w-xs"
+            />
+          </div>
+
+          {/* Village Table */}
+          <div className="card overflow-x-auto">
+            <h2 className="text-lg font-bold text-gray-900 mb-4">Village KPIs</h2>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-gray-500 border-b">
+                  <th className="pb-2 pr-4">Village</th>
+                  <th className="pb-2 pr-4">Attendance %</th>
+                  <th className="pb-2 pr-4">Payments (RWF)</th>
+                  <th className="pb-2 pr-4">Open Requests</th>
+                  <th className="pb-2">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((v) => (
+                  <tr key={v.villageId} className="border-b last:border-0 hover:bg-gray-50">
+                    <td className="py-3 pr-4 font-medium text-gray-900">{v.villageName}</td>
+                    <td className="py-3 pr-4">
+                      <span className={v.attendanceRate < 60 ? 'badge-red' : 'badge-green'}>
+                        {v.attendanceRate.toFixed(1)}%
+                      </span>
+                    </td>
+                    <td className="py-3 pr-4 text-gray-700">{formatRwf(v.paymentsCollectedRwf)}</td>
+                    <td className="py-3 pr-4">
+                      <span className={v.openServiceRequests > 5 ? 'badge-yellow' : 'badge-blue'}>
+                        {v.openServiceRequests}
+                      </span>
+                    </td>
+                    <td className="py-3">
+                      <button
+                        onClick={() => setSelectedVillageId(
+                          selectedVillageId === v.villageId ? null : v.villageId
+                        )}
+                        className="text-blue-600 hover:underline text-xs"
+                      >
+                        {selectedVillageId === v.villageId ? 'Hide' : 'Drill down'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {filtered.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="py-8 text-center text-gray-400">No villages found</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Drill-down panel */}
+          {selectedVillageId && (
+            <div className="card mt-4">
+              {drillLoading ? (
+                <p className="text-gray-400 text-sm">Loading village details...</p>
+              ) : drillDown ? (
+                <>
+                  <h3 className="font-bold text-gray-900 mb-4">{drillDown.villageName} — Detail</h3>
+                  <div className="grid md:grid-cols-2 gap-6">
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Top Penalties</p>
+                      {drillDown.topPenalties.length === 0 ? (
+                        <p className="text-sm text-gray-400">None</p>
+                      ) : (
+                        <ul className="space-y-1">
+                          {drillDown.topPenalties.map((p, i) => (
+                            <li key={i} className="flex justify-between text-sm">
+                              <span className="text-gray-700">{p.citizenName}</span>
+                              <span className="font-medium text-red-600">{formatRwf(p.amountRwf)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Low-Attendance Isibs</p>
+                      {drillDown.lowAttendanceIsibs.length === 0 ? (
+                        <p className="text-sm text-gray-400">None</p>
+                      ) : (
+                        <ul className="space-y-1">
+                          {drillDown.lowAttendanceIsibs.map((isibo, i) => (
+                            <li key={i} className="flex justify-between text-sm">
+                              <span className="text-gray-700">{isibo.isiboName}</span>
+                              <span className="badge-red">{isibo.attendanceRate.toFixed(1)}%</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+                </>
+              ) : null}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

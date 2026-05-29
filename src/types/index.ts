@@ -118,6 +118,61 @@ export interface EmergencyReport {
   createdAt:   string;
 }
 
+// ─── Admin Dashboard (US-7.1) ─────────────────────────────────────
+export interface VillageKpi {
+  villageId:             string;
+  villageName:           string;
+  attendanceRate:        number;
+  paymentsCollectedRwf:  number;
+  openServiceRequests:   number;
+}
+
+export interface AdminDashboardData {
+  villages:            VillageKpi[];
+  totalAttendanceRate: number;
+  totalCollectedRwf:   number;
+  totalOpenRequests:   number;
+}
+
+export interface VillageDrillDown {
+  villageId:           string;
+  villageName:         string;
+  topPenalties:        { citizenName: string; amountRwf: number }[];
+  lowAttendanceIsibs:  { isiboName: string; attendanceRate: number }[];
+}
+
+// ─── Audit Log (US-7.3) ───────────────────────────────────────────
+export type AuditActionType =
+  | 'ROLE_CHANGE'
+  | 'PENALTY_ASSIGNED'
+  | 'PAYMENT_CONFIRMED'
+  | 'EMERGENCY_REPORTED'
+  | 'USER_DEACTIVATED'
+  | 'USER_ACTIVATED';
+
+export interface AuditLogEntry {
+  id:             string;
+  actingUserId:   string;
+  actingUserName: string;
+  actionType:     AuditActionType;
+  targetEntity:   string;
+  beforeValue?:   string;
+  afterValue?:    string;
+  createdAt:      string;
+}
+
+export interface AuditLogParams {
+  userId?:     string;
+  actionType?: AuditActionType;
+  page?:       number;
+  size?:       number;
+}
+
+// ─── User Deactivate (US-7.2) ─────────────────────────────────────
+export interface DeactivateUserPayload {
+  userId: string;
+}
+
 // ─── Generic Pagination ───────────────────────────────────────────
 export interface PageResponse<T> {
   content:       T[];

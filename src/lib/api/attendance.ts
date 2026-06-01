@@ -2,7 +2,7 @@ import api from './client';
 import type { AttendanceRecord, AttendanceStatus, ApiResponse } from '@/types';
 
 // GET /api/activities/{activityId}/attendance
-export const getActivityMembers = async (activityId: string): Promise<AttendanceRecord[]> => {
+export const getActivityAttendance = async (activityId: string): Promise<AttendanceRecord[]> => {
   const res = await api.get<ApiResponse<AttendanceRecord[]>>(`/activities/${activityId}/attendance`);
   return res.data.data;
 };
@@ -19,19 +19,7 @@ export const saveAttendance = async (
   return res.data.data;
 };
 
-// Used when syncing offline queue back to server
-export const syncAttendance = async (
-  activityId: string,
-  records: { citizenId: string; status: AttendanceStatus }[]
-): Promise<AttendanceRecord[]> => {
-  const res = await api.post<ApiResponse<AttendanceRecord[]>>(
-    `/activities/${activityId}/attendance/sync`,
-    { records }
-  );
-  return res.data.data;
-};
-
-// POST /api/activities/{activityId}/attendance/sync  — offline queue sync
+// POST /api/activities/{activityId}/attendance/sync
 export const syncAttendance = async (
   activityId: string,
   records: { citizenId: string; status: AttendanceStatus }[]
@@ -56,7 +44,7 @@ export const getCitizenAttendance = async (citizenId: string): Promise<Attendanc
 };
 
 // GET /api/activities/{activityId}/attendance/absent
-export const getAbsentMembers = async (activityId: string): Promise<AttendanceRecord[]> => {
+export const getAbsentees = async (activityId: string): Promise<AttendanceRecord[]> => {
   const res = await api.get<ApiResponse<AttendanceRecord[]>>(`/activities/${activityId}/attendance/absent`);
   return res.data.data;
 };

@@ -4,10 +4,10 @@ import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import toast from 'react-hot-toast';
 import { ArrowLeft, Bell, CalendarDays, MapPin, Plus, Send, UserRound } from 'lucide-react';
-import { ActivityStatus, ActivityType, UserRole } from '@/types';
+import { ActivityStatus, ActivityType, User, UserRole } from '@/types';
+import { searchUsers } from '@/lib/api/users';
+import { getStoredAuthUser } from '@/lib/auth/session';
 
-const CURRENT_USER_KEY = 'umudugudu_current_user';
-const REGISTERED_USERS_KEY = 'umudugudu_registered_users';
 const ACTIVITIES_KEY = 'umudugudu_activities';
 const USER_NOTIFICATIONS_KEY = 'umudugudu_user_notifications';
 
@@ -15,13 +15,6 @@ type CurrentUser = {
   email: string;
   fullName: string;
   role: UserRole;
-};
-
-type StoredUser = {
-  fullName: string;
-  phoneNumber: string;
-  email: string;
-  role: UserRole | null;
 };
 
 type StoredActivity = {
@@ -85,13 +78,15 @@ export default function ActivitiesPage() {
       setSelectedActivityId(new URLSearchParams(window.location.search).get('activityId'));
     };
 
-    setCurrentUser(getJson<CurrentUser | null>(sessionStorage, CURRENT_USER_KEY, null));
+    setCurrentUser(getStoredAuthUser() as CurrentUser | null);
     setActivities(
       getJson<StoredActivity[]>(localStorage, ACTIVITIES_KEY, []).sort((a, b) =>
         a.scheduledAt.localeCompare(b.scheduledAt)
       )
     );
-    setCitizenCount(getJson<StoredUser[]>(localStorage, REGISTERED_USERS_KEY, []).filter((user) => user.role === 'CITIZEN').length);
+    searchUsers({ role: 'CITIZEN' })
+      .then((result) => setCitizenCount(result.content.length))
+      .catch(() => setCitizenCount(0));
     syncSelectedActivity();
     window.addEventListener('popstate', syncSelectedActivity);
 
@@ -111,7 +106,7 @@ export default function ActivitiesPage() {
     setSelectedActivityId(null);
   };
 
-  const saveActivity = (event: FormEvent<HTMLFormElement>) => {
+  const saveActivity = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     if (!canCreateActivity) {
@@ -131,18 +126,16 @@ export default function ActivitiesPage() {
       scheduledAt,
       location: location.trim(),
       status: 'SCHEDULED',
-      createdBy: currentUser.email,
+      createdBy: currentUser.email ?? currentUser.fullName,
       createdAt: Date.now(),
     };
 
-    const citizens = getJson<StoredUser[]>(localStorage, REGISTERED_USERS_KEY, []).filter(
-      (user) => user.role === 'CITIZEN'
-    );
+    const citizens = await searchUsers({ role: 'CITIZEN' }).then((result) => result.content).catch(() => [] as User[]);
     const channel: UserNotification['channel'] = navigator.onLine ? 'PUSH' : 'SMS';
     const activityMessage = buildActivityMessage(activity);
     const newNotifications: UserNotification[] = citizens.map((citizen) => ({
       id: crypto.randomUUID(),
-      email: citizen.email,
+      email: citizen.email ?? citizen.id,
       title: 'New activity created',
       message: activityMessage,
       createdAt: Date.now(),

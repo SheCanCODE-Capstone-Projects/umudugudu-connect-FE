@@ -17,8 +17,8 @@ import {
 } from 'lucide-react';
 import type { ActivityStatus, ActivityType, PenaltyStatus, UserRole } from '@/types';
 import LogoutButton, { useRedirectLoggedOut } from '@/components/shared/LogoutButton';
+import { getStoredAuthUser } from '@/lib/auth/session';
 
-const CURRENT_USER_KEY = 'umudugudu_current_user';
 const ACTIVITIES_KEY = 'umudugudu_activities';
 const USER_NOTIFICATIONS_KEY = 'umudugudu_user_notifications';
 const PENALTIES_KEY = 'umudugudu_penalties';
@@ -86,7 +86,7 @@ export default function CitizenDashboard() {
   const [penalties, setPenalties] = useState<StoredPenalty[]>([]);
 
   useEffect(() => {
-    const user = getJson<CurrentUser | null>(sessionStorage, CURRENT_USER_KEY, null);
+    const user = getStoredAuthUser() as CurrentUser | null;
     const now = new Date().getTime();
 
     setCurrentUser(user);

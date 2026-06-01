@@ -5,37 +5,24 @@ import { useRouter } from 'next/navigation';
 import { ChangeEvent, ClipboardEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, LogIn, RotateCw, ShieldCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { UserRole } from '@/types';
+import { getApiErrorMessage, PendingOtpChallenge, resendOtp, verifyOtp } from '@/lib/api/auth';
+import { getDashboardPath } from '@/lib/auth/routes';
+import { PENDING_OTP_KEY, saveAuthSession } from '@/lib/auth/session';
+import { useAppDispatch } from '@/hooks/redux';
+import { setUser } from '@/store/slices/authSlice';
 
 const OTP_LENGTH = 6;
 const RESEND_SECONDS = 45;
-const PENDING_OTP_KEY = 'umudugudu_pending_otp_login';
-const CURRENT_USER_KEY = 'umudugudu_current_user';
-const REGISTERED_USERS_KEY = 'umudugudu_registered_users';
-
-type PendingOtpLogin = {
-  purpose?: 'registration' | 'login';
-  email: string;
-  fullName?: string;
-  maskedEmail: string;
-  contactLabel?: string;
-  role: UserRole;
-  dashboardPath: string;
-  requestedAt: number;
-};
-
-type StoredUser = {
-  email: string;
-  isVerified?: boolean;
-  verifiedAt?: number;
-};
 
 export default function OtpLoginPage() {
   const router = useRouter();
+  const dispatch = useAppDispatch();
   const [otp, setOtp] = useState<string[]>(Array(OTP_LENGTH).fill(''));
   const [timeLeft, setTimeLeft] = useState(RESEND_SECONDS);
   const [error, setError] = useState('');
-  const [pendingLogin, setPendingLogin] = useState<PendingOtpLogin | null>(null);
+  const [pendingLogin, setPendingLogin] = useState<PendingOtpChallenge | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [isResending, setIsResending] = useState(false);
   const inputRefs = useRef<Array<HTMLInputElement | null>>([]);
 
   useEffect(() => {
@@ -47,7 +34,7 @@ export default function OtpLoginPage() {
     }
 
     try {
-      setPendingLogin(JSON.parse(storedLogin) as PendingOtpLogin);
+      setPendingLogin(JSON.parse(storedLogin) as PendingOtpChallenge);
     } catch {
       sessionStorage.removeItem(PENDING_OTP_KEY);
       toast.error('Please log in again');
@@ -67,24 +54,6 @@ export default function OtpLoginPage() {
 
   const code = otp.join('');
   const formattedTime = `00:${String(timeLeft).padStart(2, '0')}`;
-
-  const markUserVerified = (email: string) => {
-    try {
-      const users = JSON.parse(localStorage.getItem(REGISTERED_USERS_KEY) ?? '[]') as StoredUser[];
-      const nextUsers = users.map((user) =>
-        user.email === email
-          ? {
-              ...user,
-              isVerified: true,
-              verifiedAt: Date.now(),
-            }
-          : user
-      );
-      localStorage.setItem(REGISTERED_USERS_KEY, JSON.stringify(nextUsers));
-    } catch {
-      toast.error('Could not update account verification');
-    }
-  };
 
   const focusInput = (index: number) => {
     inputRefs.current[index]?.focus();
@@ -122,22 +91,32 @@ export default function OtpLoginPage() {
     }
   };
 
-  const handleResend = () => {
+  const handleResend = async () => {
     if (!pendingLogin) return;
 
-    /*
-      Backend integration point:
-      POST pendingLogin.email/phone or a backend-issued challengeId to resend OTP.
-      Backend sends a new code to the selected registered contact method.
-    */
-    setOtp(Array(OTP_LENGTH).fill(''));
-    setTimeLeft(RESEND_SECONDS);
-    setError('');
-    focusInput(0);
-    toast.success('A new code has been requested');
+    try {
+      setIsResending(true);
+      const response = await resendOtp(pendingLogin);
+      const nextPending = {
+        ...pendingLogin,
+        challengeId: response.challengeId ?? pendingLogin.challengeId,
+        requestedAt: Date.now(),
+      };
+      sessionStorage.setItem(PENDING_OTP_KEY, JSON.stringify(nextPending));
+      setPendingLogin(nextPending);
+      setOtp(Array(OTP_LENGTH).fill(''));
+      setTimeLeft(RESEND_SECONDS);
+      setError('');
+      focusInput(0);
+      toast.success(response.message || 'A new code has been requested');
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, 'Could not resend OTP code'));
+    } finally {
+      setIsResending(false);
+    }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!pendingLogin) {
       router.replace('/auth/login');
       return;
@@ -149,31 +128,31 @@ export default function OtpLoginPage() {
       return;
     }
 
-    /*
-      Backend integration point:
-      POST the entered OTP plus the backend-issued challengeId/email.
-      For registration, backend marks the account verified.
-      For login, backend verifies the OTP, returns tokens and the authenticated user's role.
-    */
-    sessionStorage.removeItem(PENDING_OTP_KEY);
+    try {
+      setIsVerifying(true);
+      const response = await verifyOtp(pendingLogin, code);
+      sessionStorage.removeItem(PENDING_OTP_KEY);
 
-    if (pendingLogin.purpose === 'registration') {
-      markUserVerified(pendingLogin.email);
-      toast.success('Account verified successfully');
-      router.push('/auth/login');
-      return;
+      if (response.auth) {
+        saveAuthSession(response.auth);
+        dispatch(setUser(response.auth.user));
+        toast.success(response.message || 'Login verified successfully');
+        router.push(getDashboardPath(response.auth.user.role));
+        return;
+      }
+
+      if (pendingLogin.purpose === 'registration') {
+        toast.success(response.message || 'Account verified successfully');
+        router.push('/auth/login');
+        return;
+      }
+
+      setError('Verification succeeded but no session token was returned');
+    } catch (error) {
+      setError(getApiErrorMessage(error, 'Invalid or expired verification code'));
+    } finally {
+      setIsVerifying(false);
     }
-
-    sessionStorage.setItem(
-      CURRENT_USER_KEY,
-      JSON.stringify({
-        email: pendingLogin.email,
-        fullName: pendingLogin.fullName ?? pendingLogin.email,
-        role: pendingLogin.role,
-      })
-    );
-    toast.success('Login verified successfully');
-    router.push(pendingLogin.dashboardPath);
   };
 
   if (!pendingLogin) {
@@ -255,23 +234,24 @@ export default function OtpLoginPage() {
           <div className="mt-4 flex items-center justify-center gap-1.5 text-[10px] font-medium text-gray-950">
             <RotateCw className="h-3.5 w-3.5 text-gray-600" strokeWidth={2} />
             <span>
-              Resend in <span className="font-extrabold text-emerald-800">{formattedTime}</span>
+              {isResending ? 'Requesting...' : <>Resend in <span className="font-extrabold text-emerald-800">{formattedTime}</span></>}
             </span>
           </div>
 
           <button
             type="button"
             onClick={handleSubmit}
+            disabled={isVerifying}
             className="mt-5 flex h-11 w-full items-center justify-center gap-3 rounded-lg bg-[#008c3a] px-4 text-sm font-bold text-white shadow-sm  outline-1 outline-offset-2  outline-sky-500 transition hover:bg-emerald-800 focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-emerald-700"
           >
-            <span>{pendingLogin.purpose === 'registration' ? 'Verify Account' : 'Verify & Login'}</span>
+            <span>{isVerifying ? 'Verifying...' : pendingLogin.purpose === 'registration' ? 'Verify Account' : 'Verify & Login'}</span>
             <LogIn className="h-4 w-4" strokeWidth={2.7} />
           </button>
 
           <button
             type="button"
             onClick={handleResend}
-            disabled={timeLeft > 0}
+            disabled={timeLeft > 0 || isResending}
             className="mt-3 flex h-10 w-full items-center justify-center rounded-lg border border-emerald-700 bg-white/80 text-xs font-bold text-emerald-800 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-emerald-300 disabled:text-emerald-300"
           >
             Resend Code

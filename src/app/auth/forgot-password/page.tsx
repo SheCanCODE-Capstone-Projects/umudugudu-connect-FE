@@ -7,33 +7,15 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ArrowLeft, Mail, Send } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { getApiErrorMessage, requestPasswordReset } from '@/lib/api/auth';
+import { PENDING_RESET_KEY } from '@/lib/auth/session';
+import { maskEmail } from '@/lib/utils/authFormat';
 
 const forgotPasswordSchema = z.object({
   email: z.string().trim().min(1, 'Email is required').email('Enter a valid email address'),
 });
 
 type ForgotPasswordFormValues = z.infer<typeof forgotPasswordSchema>;
-
-const PENDING_RESET_KEY = 'umudugudu_pending_password_reset';
-const REGISTERED_USERS_KEY = 'umudugudu_registered_users';
-
-type StoredUser = {
-  email: string;
-};
-
-const getStoredUsers = () => {
-  try {
-    return JSON.parse(localStorage.getItem(REGISTERED_USERS_KEY) ?? '[]') as StoredUser[];
-  } catch {
-    return [];
-  }
-};
-
-const maskEmail = (email: string) => {
-  const [name, domain] = email.split('@');
-  if (!name || !domain) return email;
-  return `${name.slice(0, 2)}${'*'.repeat(Math.max(name.length - 2, 3))}@${domain}`;
-};
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
@@ -49,30 +31,26 @@ export default function ForgotPasswordPage() {
 
   const onSubmit = async (values: ForgotPasswordFormValues) => {
     const normalizedEmail = values.email.toLowerCase();
-    const registeredUser = getStoredUsers().find((user) => user.email === normalizedEmail);
 
-    if (!registeredUser) {
+    try {
+      const response = await requestPasswordReset(normalizedEmail);
+      sessionStorage.setItem(
+        PENDING_RESET_KEY,
+        JSON.stringify({
+          challengeId: response.challengeId,
+          email: response.email ?? normalizedEmail,
+          maskedEmail: maskEmail(response.email ?? normalizedEmail),
+          requestedAt: Date.now(),
+        })
+      );
+      toast.success(response.message || 'Reset OTP code sent to your email');
+      router.push('/auth/reset-password');
+    } catch (error) {
+      const message = getApiErrorMessage(error, 'Could not send password reset OTP');
       sessionStorage.removeItem(PENDING_RESET_KEY);
-      setError('email', { type: 'manual', message: 'No account found with this email address' });
-      toast.error('No account found with this email address');
-      return;
+      setError('email', { type: 'manual', message });
+      toast.error(message);
     }
-
-    /*
-      Backend integration point:
-      POST normalizedEmail to request a password reset OTP.
-      Backend sends the OTP to the registered account email and returns a challengeId.
-    */
-    sessionStorage.setItem(
-      PENDING_RESET_KEY,
-      JSON.stringify({
-        email: normalizedEmail,
-        maskedEmail: maskEmail(normalizedEmail),
-        requestedAt: Date.now(),
-      })
-    );
-    toast.success('Reset OTP code sent to your email');
-    router.push('/auth/reset-password');
   };
 
   return (

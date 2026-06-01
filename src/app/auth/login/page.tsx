@@ -2,31 +2,27 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { MouseEvent, useRef } from 'react';
+import { MouseEvent, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ArrowLeft, ArrowRight, Globe2, ShieldCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { UserRole } from '@/types';
+import { getApiErrorMessage, getGoogleAuthorizeUrl, getGoogleLoginUrl, loginUser } from '@/lib/api/auth';
+import { getDashboardPath } from '@/lib/auth/routes';
+import { GOOGLE_OAUTH_STATE_KEY, PENDING_OTP_KEY, saveAuthSession } from '@/lib/auth/session';
+import { maskEmail, maskPhoneNumber, normalizeLoginPhone, isValidLoginRwandaPhone } from '@/lib/utils/authFormat';
+import { useAppDispatch } from '@/hooks/redux';
+import { setUser } from '@/store/slices/authSlice';
 
 const isValidEmail = (value: string) => z.string().email().safeParse(value).success;
-
-const normalizePhoneNumber = (value: string) => {
-  const digits = value.replace(/\D/g, '');
-  if (digits.startsWith('250')) return digits.slice(3);
-  if (digits.startsWith('0')) return digits.slice(1);
-  return digits;
-};
-
-const isValidRwandaPhone = (value: string) => /^7[2389]\d{7}$/.test(normalizePhoneNumber(value));
 
 const loginSchema = z.object({
   identifier: z
     .string()
     .trim()
     .min(1, 'Email or phone number is required')
-    .refine((value) => isValidEmail(value) || isValidRwandaPhone(value), {
+    .refine((value) => isValidEmail(value) || isValidLoginRwandaPhone(value), {
       message: 'Enter a valid email address or Rwanda phone number',
     }),
   password: z.string().min(1, 'Password is required').min(6, 'Password must be at least 6 characters'),
@@ -34,48 +30,11 @@ const loginSchema = z.object({
 
 type LoginFormValues = z.infer<typeof loginSchema>;
 
-const PENDING_OTP_KEY = 'umudugudu_pending_otp_login';
-const REGISTERED_USERS_KEY = 'umudugudu_registered_users';
-const CURRENT_USER_KEY = 'umudugudu_current_user';
-const DEFAULT_API_URL = 'http://localhost:8080';
-const GOOGLE_AUTH_BASE_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
-
-type StoredUser = {
-  fullName?: string;
-  email: string;
-  phoneNumber?: string;
-  role?: UserRole | null;
-  password: string;
-  isVerified?: boolean;
-};
-
-const dashboardByRole: Record<UserRole, string> = {
-  CITIZEN: '/dashboard/citizen',
-  ISIBO_LEADER: '/dashboard/isibo-leader',
-  VILLAGE_LEADER: '/dashboard/village-leader',
-  ADMIN: '/dashboard/admin',
-};
-
-const maskEmail = (email: string) => {
-  const [name, domain] = email.split('@');
-  if (!name || !domain) return email;
-  return `${name.slice(0, 2)}${'*'.repeat(Math.max(name.length - 2, 3))}@${domain}`;
-};
-
-const maskPhoneNumber = (phoneNumber: string) =>
-  `+250 ${phoneNumber.slice(0, 3)} *** ${phoneNumber.slice(-3)}`;
-
-const getStoredUsers = () => {
-  try {
-    return JSON.parse(localStorage.getItem(REGISTERED_USERS_KEY) ?? '[]') as StoredUser[];
-  } catch {
-    return [];
-  }
-};
-
 export default function LoginPage() {
   const router = useRouter();
+  const dispatch = useAppDispatch();
   const formRef = useRef<HTMLFormElement | null>(null);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const {
     register,
     handleSubmit,
@@ -88,94 +47,53 @@ export default function LoginPage() {
   });
 
   const onSubmit = async (values: LoginFormValues) => {
-    /*
-      Backend integration point:
-      1. POST email-or-phone/password to login endpoint.
-      2. Backend validates registered credentials.
-      3. Backend sends login OTP only for ISIBO_LEADER and VILLAGE_LEADER users.
-      4. Backend returns pending auth info, including user role.
-    */
     const identifier = values.identifier.trim();
-    const normalizedEmail = identifier.toLowerCase();
-    const normalizedPhone = normalizePhoneNumber(identifier);
-    const isPhoneLogin = isValidRwandaPhone(identifier);
-    const registeredUser = getStoredUsers().find((user) => {
-      const emailMatches = user.email === normalizedEmail;
-      const phoneMatches = user.phoneNumber ? normalizePhoneNumber(user.phoneNumber) === normalizedPhone : false;
+    const normalizedPhone = normalizeLoginPhone(identifier);
+    const isPhoneLogin = isValidLoginRwandaPhone(identifier);
 
-      return (isPhoneLogin ? phoneMatches : emailMatches) && user.password === values.password;
-    });
+    try {
+      const response = await loginUser({
+        email: isPhoneLogin ? undefined : identifier.toLowerCase(),
+        phoneNumber: isPhoneLogin ? normalizedPhone : undefined,
+        password: values.password,
+      });
 
-    if (!registeredUser) {
+      if (response.auth) {
+        saveAuthSession(response.auth);
+        dispatch(setUser(response.auth.user));
+        sessionStorage.removeItem(PENDING_OTP_KEY);
+        toast.success(response.message || 'Login successful');
+        router.push(getDashboardPath(response.auth.user.role));
+        return;
+      }
+
+      const roleFromBackend = response.role;
+      const dashboardPath = getDashboardPath(roleFromBackend);
+
       sessionStorage.removeItem(PENDING_OTP_KEY);
-      setError('root', { type: 'manual', message: 'You have entered invalid login details' });
-      toast.error('You have entered invalid login details');
-      return;
-    }
-
-    if (registeredUser.isVerified === false) {
       sessionStorage.setItem(
         PENDING_OTP_KEY,
         JSON.stringify({
-          purpose: 'registration',
-          email: registeredUser.email,
-          fullName: registeredUser.fullName ?? registeredUser.email,
-          maskedEmail: maskEmail(registeredUser.email),
-          contactLabel: maskEmail(registeredUser.email),
-          role: registeredUser.role ?? 'CITIZEN',
-          dashboardPath: '/auth/login',
+          purpose: 'login',
+          challengeId: response.challengeId,
+          email: response.email ?? identifier.toLowerCase(),
+          phoneNumber: response.phoneNumber ?? (isPhoneLogin ? normalizedPhone : undefined),
+          fullName: response.fullName ?? response.email ?? identifier,
+          maskedEmail: maskEmail(response.email ?? identifier.toLowerCase()),
+          contactLabel: isPhoneLogin ? maskPhoneNumber(normalizedPhone) : maskEmail(response.email ?? identifier.toLowerCase()),
+          role: roleFromBackend,
+          dashboardPath,
           requestedAt: Date.now(),
         })
       );
-      toast.error('Verify your account before login');
+      toast.success(response.message || 'OTP code sent to your registered contact');
       router.push('/auth/otp-login');
-      return;
-    }
-
-    const roleFromBackend = registeredUser.role;
-    if (!roleFromBackend) {
+    } catch (error) {
+      const message = getApiErrorMessage(error, 'You have entered invalid login details');
       sessionStorage.removeItem(PENDING_OTP_KEY);
-      sessionStorage.removeItem(CURRENT_USER_KEY);
-      setError('root', {
-        type: 'manual',
-        message: 'Your account is waiting for admin role assignment',
-      });
-      toast.error('Your account is waiting for admin role assignment');
-      return;
+      setError('root', { type: 'manual', message });
+      toast.error(message);
     }
-
-    const dashboardPath = dashboardByRole[roleFromBackend];
-
-    if (roleFromBackend === 'CITIZEN' || roleFromBackend === 'ADMIN') {
-      sessionStorage.removeItem(PENDING_OTP_KEY);
-      sessionStorage.setItem(
-        CURRENT_USER_KEY,
-        JSON.stringify({
-          email: registeredUser.email,
-          fullName: registeredUser.fullName ?? registeredUser.email,
-          role: roleFromBackend,
-        })
-      );
-      toast.success('Login successful');
-      router.push(dashboardPath);
-      return;
-    }
-
-    sessionStorage.setItem(
-      PENDING_OTP_KEY,
-      JSON.stringify({
-        email: registeredUser.email,
-        fullName: registeredUser.fullName ?? registeredUser.email,
-        maskedEmail: maskEmail(registeredUser.email),
-        contactLabel: isPhoneLogin ? maskPhoneNumber(normalizedPhone) : maskEmail(registeredUser.email),
-        role: roleFromBackend,
-        dashboardPath,
-        requestedAt: Date.now(),
-      })
-    );
-
-    toast.success('OTP code sent to your registered contact');
-    router.push('/auth/otp-login');
   };
 
   const startOtpLogin = () => {
@@ -184,27 +102,21 @@ export default function LoginPage() {
     toast('Enter your registered email or phone number first');
   };
 
-  const startGoogleLogin = (event: MouseEvent<HTMLAnchorElement>) => {
-    if (!googleClientId) {
-      event.preventDefault();
-      toast.error('Add NEXT_PUBLIC_GOOGLE_CLIENT_ID in .env.local first');
-      return;
-    }
+  const startGoogleLogin = async (event: MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    sessionStorage.setItem(GOOGLE_OAUTH_STATE_KEY, 'umudugudu-google-login');
 
-    sessionStorage.setItem('umudugudu_google_oauth_state', 'umudugudu-google-login');
+    try {
+      setIsGoogleLoading(true);
+      const authorizationUrl = await getGoogleAuthorizeUrl();
+      window.location.href = authorizationUrl ?? googleLoginUrl;
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, 'Could not start Google login'));
+      setIsGoogleLoading(false);
+    }
   };
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? DEFAULT_API_URL;
-  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-  const googleRedirectUri = process.env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI ?? `${apiUrl}/login/oauth2/code/google`;
-  const googleLoginUrl = `${GOOGLE_AUTH_BASE_URL}?${new URLSearchParams({
-    client_id: googleClientId ?? '',
-    redirect_uri: googleRedirectUri,
-    response_type: 'code',
-    scope: 'openid email profile',
-    prompt: 'select_account',
-    state: 'umudugudu-google-login',
-  }).toString()}`;
+  const googleLoginUrl = getGoogleLoginUrl();
 
   return (
     <main className="min-h-screen bg-[#f8fafc] text-gray-950">
@@ -329,7 +241,7 @@ export default function LoginPage() {
           <span className="grid h-5 w-5 place-items-center rounded-full border border-gray-200 text-sm font-extrabold text-blue-600">
             G
           </span>
-          <span>Continue with Google</span>
+          <span>{isGoogleLoading ? 'Opening Google...' : 'Continue with Google'}</span>
         </a>
 
         <div className="mt-6 grid grid-cols-2 gap-3 pb-0">

@@ -4,6 +4,7 @@ export type UserRole = 'CITIZEN' | 'ISIBO_LEADER' | 'VILLAGE_LEADER' | 'ADMIN';
 export interface User {
   id:          string;
   fullName:    string;
+  email?:      string;
   phoneNumber: string;
   role:        UserRole;
   villageId:   string;
@@ -65,7 +66,7 @@ export interface Penalty {
 // ─── Payment ──────────────────────────────────────────────────────
 export type PaymentMethod = 'MTN_MOMO' | 'AIRTEL_MONEY';
 export type PaymentStatus = 'PENDING' | 'COMPLETED' | 'FAILED';
-
+export type PaymentType   = 'PENALTY' | 'CONTRIBUTION';
 export interface Payment {
   id:             string;
   payerId:        string;
@@ -74,6 +75,7 @@ export interface Payment {
   externalTxId?:  string;
   status:         PaymentStatus;
   paidAt?:        string;
+  paymentType:    PaymentType;
 }
 
 // ─── Service Request ──────────────────────────────────────────────

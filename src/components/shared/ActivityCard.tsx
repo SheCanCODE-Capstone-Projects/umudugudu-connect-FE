@@ -31,11 +31,7 @@ export const ActivityCard = ({ activity }: ActivityCardProps) => {
 
   return (
     <div className="border rounded-xl p-4 bg-white shadow-sm flex flex-col gap-3">
-<<<<<<< HEAD
-=======
-
       {/* Header */}
->>>>>>> origin/main
       <div className="flex items-start justify-between gap-2">
         <h3 className="font-semibold text-gray-900 text-base">{activity.title}</h3>
         <div className="flex gap-2 flex-shrink-0">
@@ -47,11 +43,8 @@ export const ActivityCard = ({ activity }: ActivityCardProps) => {
           </span>
         </div>
       </div>
-<<<<<<< HEAD
-=======
 
       {/* Details */}
->>>>>>> origin/main
       <div className="flex flex-col gap-1 text-sm text-gray-500">
         <p>📅 {formattedDate}</p>
         {activity.location && <p>📍 {activity.location}</p>}

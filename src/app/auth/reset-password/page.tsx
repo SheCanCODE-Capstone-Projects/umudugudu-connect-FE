@@ -8,11 +8,11 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ArrowLeft, Eye, EyeOff, KeyRound, LockKeyhole, RotateCw } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { getApiErrorMessage, requestPasswordReset, resetPassword, PendingPasswordReset } from '@/lib/api/auth';
+import { PENDING_RESET_KEY } from '@/lib/auth/session';
 
 const OTP_LENGTH = 6;
 const RESEND_SECONDS = 45;
-const PENDING_RESET_KEY = 'umudugudu_pending_password_reset';
-const REGISTERED_USERS_KEY = 'umudugudu_registered_users';
 
 const resetPasswordSchema = z
   .object({
@@ -31,26 +31,6 @@ const resetPasswordSchema = z
 
 type ResetPasswordFormValues = z.infer<typeof resetPasswordSchema>;
 
-type PendingPasswordReset = {
-  email: string;
-  maskedEmail: string;
-  requestedAt: number;
-};
-
-type StoredUser = {
-  email: string;
-  password: string;
-  [key: string]: unknown;
-};
-
-const getStoredUsers = () => {
-  try {
-    return JSON.parse(localStorage.getItem(REGISTERED_USERS_KEY) ?? '[]') as StoredUser[];
-  } catch {
-    return [];
-  }
-};
-
 export default function ResetPasswordPage() {
   const router = useRouter();
   const [otp, setOtp] = useState<string[]>(Array(OTP_LENGTH).fill(''));
@@ -58,6 +38,7 @@ export default function ResetPasswordPage() {
   const [otpError, setOtpError] = useState('');
   const [pendingReset, setPendingReset] = useState<PendingPasswordReset | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+  const [isResending, setIsResending] = useState(false);
   const inputRefs = useRef<Array<HTMLInputElement | null>>([]);
 
   const {
@@ -138,18 +119,29 @@ export default function ResetPasswordPage() {
     }
   };
 
-  const handleResend = () => {
+  const handleResend = async () => {
     if (!pendingReset) return;
 
-    /*
-      Backend integration point:
-      POST pendingReset.email or a backend-issued challengeId to resend password reset OTP.
-    */
-    setOtp(Array(OTP_LENGTH).fill(''));
-    setTimeLeft(RESEND_SECONDS);
-    setOtpError('');
-    focusInput(0);
-    toast.success('A new reset code has been requested');
+    try {
+      setIsResending(true);
+      const response = await requestPasswordReset(pendingReset.email);
+      const nextPending = {
+        ...pendingReset,
+        challengeId: response.challengeId ?? pendingReset.challengeId,
+        requestedAt: Date.now(),
+      };
+      sessionStorage.setItem(PENDING_RESET_KEY, JSON.stringify(nextPending));
+      setPendingReset(nextPending);
+      setOtp(Array(OTP_LENGTH).fill(''));
+      setTimeLeft(RESEND_SECONDS);
+      setOtpError('');
+      focusInput(0);
+      toast.success(response.message || 'A new reset code has been requested');
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, 'Could not resend reset code'));
+    } finally {
+      setIsResending(false);
+    }
   };
 
   const onSubmit = async (values: ResetPasswordFormValues) => {
@@ -164,20 +156,19 @@ export default function ResetPasswordPage() {
       return;
     }
 
-    /*
-      Backend integration point:
-      POST the entered OTP, challengeId/email, and new password.
-      Backend verifies the OTP and saves the new password.
-    */
-    const users = getStoredUsers();
-    const nextUsers = users.map((user) =>
-      user.email === pendingReset.email ? { ...user, password: values.password } : user
-    );
-
-    localStorage.setItem(REGISTERED_USERS_KEY, JSON.stringify(nextUsers));
-    sessionStorage.removeItem(PENDING_RESET_KEY);
-    toast.success('Password reset successfully. Login with your new password');
-    router.push('/auth/login');
+    try {
+      const response = await resetPassword({
+        email: pendingReset.email,
+        challengeId: pendingReset.challengeId,
+        otp: code,
+        password: values.password,
+      });
+      sessionStorage.removeItem(PENDING_RESET_KEY);
+      toast.success(response.message || 'Password reset successfully. Login with your new password');
+      router.push('/auth/login');
+    } catch (error) {
+      setOtpError(getApiErrorMessage(error, 'Invalid reset code or expired reset request'));
+    }
   };
 
   const inputClass = (hasError?: boolean, extra = '') =>
@@ -256,12 +247,12 @@ export default function ResetPasswordPage() {
           <div className="flex items-center justify-between rounded-md border border-emerald-100 bg-emerald-50 px-3 py-2 text-[10px] font-medium text-gray-950">
             <span className="flex items-center gap-1.5">
               <RotateCw className="h-3.5 w-3.5 text-gray-600" strokeWidth={2} />
-              Resend in <span className="font-extrabold text-emerald-800">{formattedTime}</span>
+              {isResending ? 'Requesting...' : <>Resend in <span className="font-extrabold text-emerald-800">{formattedTime}</span></>}
             </span>
             <button
               type="button"
               onClick={handleResend}
-              disabled={timeLeft > 0}
+              disabled={timeLeft > 0 || isResending}
               className="font-bold text-emerald-800 transition hover:text-emerald-950 disabled:cursor-not-allowed disabled:text-emerald-300"
             >
               Resend Code

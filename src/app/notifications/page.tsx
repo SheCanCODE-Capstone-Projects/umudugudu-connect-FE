@@ -16,8 +16,8 @@ import {
   UserRound,
   UsersRound,
 } from 'lucide-react';
+import { getStoredAuthUser } from '@/lib/auth/session';
 
-const CURRENT_USER_KEY = 'umudugudu_current_user';
 const USER_NOTIFICATIONS_KEY = 'umudugudu_user_notifications';
 
 type CurrentUser = {
@@ -197,7 +197,7 @@ export default function NotificationsPage() {
   const [openNotificationId, setOpenNotificationId] = useState<string | null>(null);
 
   useEffect(() => {
-    const user = getJson<CurrentUser | null>(sessionStorage, CURRENT_USER_KEY, null);
+    const user = getStoredAuthUser() as CurrentUser | null;
     setCurrentUser(user);
 
     if (!user) return;

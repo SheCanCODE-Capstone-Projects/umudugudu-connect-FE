@@ -29,6 +29,9 @@ export function useReviewRequest() {
   return useMutation({
     mutationFn: ({ id, action, response }: { id: string; action: 'APPROVE' | 'REJECT' | 'INFO_REQUIRED'; response: string }) =>
       reviewRequest(id, { action, response }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['service-requests', 'pending'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['service-requests', 'queue'] });
+      qc.invalidateQueries({ queryKey: ['service-requests', 'my'] });
+    },
   });
 }

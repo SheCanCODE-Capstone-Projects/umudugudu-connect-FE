@@ -153,8 +153,8 @@ function ReviewQueue({ role }: { role: 'ISIBO_LEADER' | 'VILLAGE_LEADER' | 'ADMI
 // ─── Page ──────────────────────────────────────────────────────────
 export default function ServiceRequestsPage() {
   const user = useAppSelector((s) => s.auth.user);
-  const isLeader = user?.role === 'VILLAGE_LEADER' || user?.role === 'ISIBO_LEADER';
-  const isCitizen = !isLeader;
+  const isLeader  = user?.role === 'VILLAGE_LEADER' || user?.role === 'ISIBO_LEADER' || user?.role === 'ADMIN';
+  const isCitizen = user?.role === 'CITIZEN';
 
   const [tab, setTab] = useState<'submit' | 'my'>('submit');
 

@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { usePenalties } from '@/hooks/usePenalties';
 import { AssignPenaltyForm } from '@/components/forms/AssignPenaltyForm';
-import type { AssignPenaltyPayload, ExemptionPayload } from '@/types';
+import type { AssignPenaltyPayload } from '@/types';
 
 export default function AssignPenaltyPage() {
   const router = useRouter();
@@ -18,7 +18,6 @@ export default function AssignPenaltyPage() {
     error,
     successMessage,
     assignPenalty,
-    exemptAbsence,
     resetMessages,
   } = usePenalties();
 
@@ -41,10 +40,6 @@ export default function AssignPenaltyPage() {
 
   const handleAssign = (payload: AssignPenaltyPayload) => {
     assignPenalty(payload);
-  };
-
-  const handleExempt = (payload: ExemptionPayload) => {
-    exemptAbsence(payload);
   };
 
   return (
@@ -85,7 +80,6 @@ export default function AssignPenaltyPage() {
           activityId={activityId}
           citizenName={citizenName}
           onAssign={handleAssign}
-          onExempt={handleExempt}
           loading={loading}
         />
       </div>

@@ -8,7 +8,13 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ArrowLeft, Eye, EyeOff, KeyRound, LockKeyhole, RotateCw } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { getApiErrorMessage, requestPasswordReset, resetPassword, PendingPasswordReset } from '@/lib/api/auth';
+import {
+  getApiErrorMessage,
+  requestPasswordReset,
+  resetPassword,
+  verifyPasswordResetOtp,
+  PendingPasswordReset,
+} from '@/lib/api/auth';
 import { PENDING_RESET_KEY } from '@/lib/auth/session';
 
 const OTP_LENGTH = 6;
@@ -157,10 +163,15 @@ export default function ResetPasswordPage() {
     }
 
     try {
+      const verification = await verifyPasswordResetOtp(pendingReset.email, code);
+      if (!verification.resetToken) {
+        setOtpError('Reset code was verified, but the reset token was not returned');
+        return;
+      }
+
       const response = await resetPassword({
         email: pendingReset.email,
-        challengeId: pendingReset.challengeId,
-        otp: code,
+        resetToken: verification.resetToken,
         password: values.password,
       });
       sessionStorage.removeItem(PENDING_RESET_KEY);

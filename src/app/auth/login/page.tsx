@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ArrowLeft, ArrowRight, Globe2, ShieldCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { getApiErrorMessage, getGoogleAuthorizeUrl, getGoogleLoginUrl, loginUser } from '@/lib/api/auth';
+import { getApiErrorMessage, getGoogleLoginUrl, loginUser } from '@/lib/api/auth';
 import { getDashboardPath } from '@/lib/auth/routes';
 import { GOOGLE_OAUTH_STATE_KEY, PENDING_OTP_KEY, saveAuthSession } from '@/lib/auth/session';
 import { maskEmail, maskPhoneNumber, normalizeLoginPhone, isValidLoginRwandaPhone } from '@/lib/utils/authFormat';
@@ -102,18 +102,12 @@ export default function LoginPage() {
     toast('Enter your registered email or phone number first');
   };
 
-  const startGoogleLogin = async (event: MouseEvent<HTMLAnchorElement>) => {
+  const startGoogleLogin = (event: MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault();
     sessionStorage.setItem(GOOGLE_OAUTH_STATE_KEY, 'umudugudu-google-login');
 
-    try {
-      setIsGoogleLoading(true);
-      const authorizationUrl = await getGoogleAuthorizeUrl();
-      window.location.href = authorizationUrl ?? googleLoginUrl;
-    } catch (error) {
-      toast.error(getApiErrorMessage(error, 'Could not start Google login'));
-      setIsGoogleLoading(false);
-    }
+    setIsGoogleLoading(true);
+    window.location.assign(googleLoginUrl);
   };
 
   const googleLoginUrl = getGoogleLoginUrl();
@@ -127,7 +121,7 @@ export default function LoginPage() {
             aria-label="Go back"
             className="grid h-7 w-7 place-items-center text-emerald-800 outline-1  outline-sky-500 transition hover:bg-emerald-50"
           >
-            {/* <ArrowLeft className="h-5 w-5" strokeWidth={2.3} /> */}
+            { <ArrowLeft className="h-5 w-5" strokeWidth={2.3} /> }
           </Link>
           <p className="text-sm font-bold text-emerald-800">Umudugudu Connect</p>
         </div>

@@ -1,16 +1,14 @@
 import { useAppSelector, useAppDispatch } from './redux';
 import {
-  fetchPenalties,
-  fetchPenaltyById,
+  fetchVillagePenalties,
   createPenalty,
-  createExemption,
+  waiverPenalty,
   fetchMyPenalties,
   fetchIsiboPenalties,
-  clearSelectedPenalty,
   clearIsiboOverview,
   clearMessages,
 } from '@/store/slices/penaltiesSlice';
-import type { PenaltySearchParams, AssignPenaltyPayload, ExemptionPayload } from '@/types';
+import type { AssignPenaltyPayload } from '@/types';
 
 export const usePenalties = () => {
   const dispatch = useAppDispatch();
@@ -18,38 +16,29 @@ export const usePenalties = () => {
     penalties,
     myPenalties,
     isiboOverview,
-    selectedPenalty,
     loading,
     error,
     successMessage,
   } = useAppSelector((state) => state.penalties);
 
-  const searchPenalties = (params: PenaltySearchParams) => {
-    dispatch(fetchPenalties(params));
-  };
-
-  const getPenaltyById = (penaltyId: string) => {
-    dispatch(fetchPenaltyById(penaltyId));
+  const searchPenalties = () => {
+    dispatch(fetchVillagePenalties());
   };
 
   const assignPenalty = (payload: AssignPenaltyPayload) => {
     dispatch(createPenalty(payload));
   };
 
-  const exemptAbsence = (payload: ExemptionPayload) => {
-    dispatch(createExemption(payload));
+  const waivePenalty = (id: string) => {
+    dispatch(waiverPenalty(id));
   };
 
   const getMyPenalties = () => {
     dispatch(fetchMyPenalties());
   };
 
-  const getIsiboPenalties = (isiboId: string) => {
-    dispatch(fetchIsiboPenalties(isiboId));
-  };
-
-  const resetSelectedPenalty = () => {
-    dispatch(clearSelectedPenalty());
+  const getIsiboPenalties = () => {
+    dispatch(fetchIsiboPenalties());
   };
 
   const resetIsiboOverview = () => {
@@ -64,17 +53,14 @@ export const usePenalties = () => {
     penalties,
     myPenalties,
     isiboOverview,
-    selectedPenalty,
     loading,
     error,
     successMessage,
     searchPenalties,
-    getPenaltyById,
     assignPenalty,
-    exemptAbsence,
+    waivePenalty,
     getMyPenalties,
     getIsiboPenalties,
-    resetSelectedPenalty,
     resetIsiboOverview,
     resetMessages,
   };

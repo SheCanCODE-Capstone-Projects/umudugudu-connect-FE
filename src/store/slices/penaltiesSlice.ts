@@ -3,61 +3,45 @@ import type { PayloadAction } from '@reduxjs/toolkit';
 import type {
   Penalty,
   AssignPenaltyPayload,
-  ExemptionPayload,
-  PenaltySearchParams,
   CitizenPenaltyView,
   IsiboPenaltyOverview,
 } from '@/types';
 import {
-  getPenalties,
-  getPenaltyById,
   assignPenalty,
-  markExemption,
-  getMyCitizenPenalties,
+  waivePenalty,
+  getMyPenalties,
   getIsiboPenalties,
+  getVillagePenalties,
 } from '@/lib/api/penalties';
 
 // ─── State ────────────────────────────────────────────────────────
 interface PenaltiesState {
-  penalties:       Penalty[];
-  myPenalties:     CitizenPenaltyView[];
-  isiboOverview:   IsiboPenaltyOverview | null;
-  selectedPenalty: Penalty | null;
-  loading:         boolean;
-  error:           string | null;
-  successMessage:  string | null;
+  penalties:      Penalty[];
+  myPenalties:    CitizenPenaltyView[];
+  isiboOverview:  IsiboPenaltyOverview | null;
+  loading:        boolean;
+  error:          string | null;
+  successMessage: string | null;
 }
 
 const initialState: PenaltiesState = {
-  penalties:       [],
-  myPenalties:     [],
-  isiboOverview:   null,
-  selectedPenalty: null,
-  loading:         false,
-  error:           null,
-  successMessage:  null,
+  penalties:      [],
+  myPenalties:    [],
+  isiboOverview:  null,
+  loading:        false,
+  error:          null,
+  successMessage: null,
 };
 
 // ─── Thunks ───────────────────────────────────────────────────────
-export const fetchPenalties = createAsyncThunk(
-  'penalties/fetchPenalties',
-  async (params: PenaltySearchParams, { rejectWithValue }) => {
+export const fetchVillagePenalties = createAsyncThunk(
+  'penalties/fetchVillagePenalties',
+  async (_, { rejectWithValue }) => {
     try {
-      const result = await getPenalties(params);
+      const result = await getVillagePenalties();
       return result.content;
     } catch (err: any) {
       return rejectWithValue(err.response?.data?.message || 'Failed to fetch penalties');
-    }
-  }
-);
-
-export const fetchPenaltyById = createAsyncThunk(
-  'penalties/fetchPenaltyById',
-  async (penaltyId: string, { rejectWithValue }) => {
-    try {
-      return await getPenaltyById(penaltyId);
-    } catch (err: any) {
-      return rejectWithValue(err.response?.data?.message || 'Failed to fetch penalty');
     }
   }
 );
@@ -73,14 +57,13 @@ export const createPenalty = createAsyncThunk(
   }
 );
 
-export const createExemption = createAsyncThunk(
-  'penalties/createExemption',
-  async (payload: ExemptionPayload, { rejectWithValue }) => {
+export const waiverPenalty = createAsyncThunk(
+  'penalties/waiverPenalty',
+  async (id: string, { rejectWithValue }) => {
     try {
-      await markExemption(payload);
-      return payload;
+      return await waivePenalty(id);
     } catch (err: any) {
-      return rejectWithValue(err.response?.data?.message || 'Failed to mark exemption');
+      return rejectWithValue(err.response?.data?.message || 'Failed to waive penalty');
     }
   }
 );
@@ -89,7 +72,7 @@ export const fetchMyPenalties = createAsyncThunk(
   'penalties/fetchMyPenalties',
   async (_, { rejectWithValue }) => {
     try {
-      return await getMyCitizenPenalties();
+      return await getMyPenalties();
     } catch (err: any) {
       return rejectWithValue(err.response?.data?.message || 'Failed to fetch your penalties');
     }
@@ -98,9 +81,9 @@ export const fetchMyPenalties = createAsyncThunk(
 
 export const fetchIsiboPenalties = createAsyncThunk(
   'penalties/fetchIsiboPenalties',
-  async (isiboId: string, { rejectWithValue }) => {
+  async (_, { rejectWithValue }) => {
     try {
-      return await getIsiboPenalties(isiboId);
+      return await getIsiboPenalties();
     } catch (err: any) {
       return rejectWithValue(err.response?.data?.message || 'Failed to fetch isibo penalties');
     }
@@ -112,9 +95,6 @@ const penaltiesSlice = createSlice({
   name: 'penalties',
   initialState,
   reducers: {
-    clearSelectedPenalty(state) {
-      state.selectedPenalty = null;
-    },
     clearIsiboOverview(state) {
       state.isiboOverview = null;
     },
@@ -125,24 +105,13 @@ const penaltiesSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
-      .addCase(fetchPenalties.pending, (state) => {
+      .addCase(fetchVillagePenalties.pending, (state) => {
         state.loading = true; state.error = null;
       })
-      .addCase(fetchPenalties.fulfilled, (state, action: PayloadAction<Penalty[]>) => {
+      .addCase(fetchVillagePenalties.fulfilled, (state, action: PayloadAction<Penalty[]>) => {
         state.loading = false; state.penalties = action.payload;
       })
-      .addCase(fetchPenalties.rejected, (state, action) => {
-        state.loading = false; state.error = action.payload as string;
-      });
-
-    builder
-      .addCase(fetchPenaltyById.pending, (state) => {
-        state.loading = true; state.error = null;
-      })
-      .addCase(fetchPenaltyById.fulfilled, (state, action: PayloadAction<Penalty>) => {
-        state.loading = false; state.selectedPenalty = action.payload;
-      })
-      .addCase(fetchPenaltyById.rejected, (state, action) => {
+      .addCase(fetchVillagePenalties.rejected, (state, action) => {
         state.loading = false; state.error = action.payload as string;
       });
 
@@ -160,14 +129,16 @@ const penaltiesSlice = createSlice({
       });
 
     builder
-      .addCase(createExemption.pending, (state) => {
+      .addCase(waiverPenalty.pending, (state) => {
         state.loading = true; state.error = null; state.successMessage = null;
       })
-      .addCase(createExemption.fulfilled, (state) => {
+      .addCase(waiverPenalty.fulfilled, (state, action: PayloadAction<Penalty>) => {
         state.loading = false;
-        state.successMessage = 'Absence marked as excused successfully';
+        state.successMessage = 'Penalty waived successfully';
+        const idx = state.penalties.findIndex(p => p.id === action.payload.id);
+        if (idx !== -1) state.penalties[idx] = action.payload;
       })
-      .addCase(createExemption.rejected, (state, action) => {
+      .addCase(waiverPenalty.rejected, (state, action) => {
         state.loading = false; state.error = action.payload as string;
       });
 
@@ -195,5 +166,5 @@ const penaltiesSlice = createSlice({
   },
 });
 
-export const { clearSelectedPenalty, clearIsiboOverview, clearMessages } = penaltiesSlice.actions;
+export const { clearIsiboOverview, clearMessages } = penaltiesSlice.actions;
 export default penaltiesSlice.reducer;

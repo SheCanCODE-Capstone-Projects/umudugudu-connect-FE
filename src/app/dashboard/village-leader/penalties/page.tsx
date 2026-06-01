@@ -18,7 +18,7 @@ export default function PenaltiesPage() {
 
   useEffect(() => {
     searchPenalties();
-  }, [];
+  }, []);
 
   useEffect(() => {
     if (successMessage || error) {

@@ -16,7 +16,6 @@ export const usePenalties = () => {
     penalties,
     myPenalties,
     isiboOverview,
-    selectedPenalty,
     loading,
     error,
     successMessage,

@@ -3,31 +3,19 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import {
-  ChevronLeft,
-  AlertTriangle,
-  Droplets,
-  HeartPulse,
-  Flame,
-  ShieldAlert,
-  MapPin,
-  CheckCircle,
-  Home,
-  Bell,
-  Grid2X2,
-  UserRound,
-  Radio,
+  ChevronLeft, AlertTriangle, Droplets, HeartPulse,
+  Flame, ShieldAlert, MapPin, CheckCircle,
+  Home, Bell, Grid2X2, UserRound, Radio,
 } from 'lucide-react';
+import { useMutation } from '@tanstack/react-query';
+import { reportEmergency } from '@/lib/api/emergency';
+import type { EmergencyType } from '@/types';
 
-type EmergencyType = 'Flood' | 'Health' | 'Fire' | 'Security';
-
-const emergencyTypes: {
-  type: EmergencyType;
-  icon: React.ReactNode;
-}[] = [
-  { type: 'Flood',    icon: <Droplets  className="h-6 w-6 mx-auto mb-1" /> },
-  { type: 'Health',   icon: <HeartPulse className="h-6 w-6 mx-auto mb-1" /> },
-  { type: 'Fire',     icon: <Flame      className="h-6 w-6 mx-auto mb-1" /> },
-  { type: 'Security', icon: <ShieldAlert className="h-6 w-6 mx-auto mb-1" /> },
+const emergencyTypes: { type: EmergencyType; icon: React.ReactNode }[] = [
+  { type: 'FLOOD',  icon: <Droplets   className="h-6 w-6 mx-auto mb-1" /> },
+  { type: 'HEALTH', icon: <HeartPulse className="h-6 w-6 mx-auto mb-1" /> },
+  { type: 'FIRE',   icon: <Flame      className="h-6 w-6 mx-auto mb-1" /> },
+  { type: 'OTHER',  icon: <ShieldAlert className="h-6 w-6 mx-auto mb-1" /> },
 ];
 
 export default function EmergencyPage() {
@@ -36,7 +24,14 @@ export default function EmergencyPage() {
   const [location, setLocation]       = useState('');
   const [useManual, setUseManual]     = useState(false);
   const [touched, setTouched]         = useState(false);
-  const [submitted, setSubmitted]     = useState(false);
+
+  const { mutate: submit, isPending, isSuccess } = useMutation({
+    mutationFn: () => reportEmergency({
+      type: selected!,
+      description,
+      location: location || undefined,
+    }),
+  });
 
   const typeError = touched && !selected;
   const descError = touched && !description.trim();
@@ -44,11 +39,11 @@ export default function EmergencyPage() {
   const handleReport = () => {
     setTouched(true);
     if (!selected || !description.trim()) return;
-    setSubmitted(true);
+    submit();
   };
 
   // ── Success screen ────────────────────────────────────────────────
-  if (submitted) {
+  if (isSuccess) {
     return (
       <main className="min-h-screen bg-[#f8fafc] pb-24 text-gray-950">
         <header className="sticky top-0 z-10 border-b border-gray-200 bg-white">
@@ -260,9 +255,10 @@ export default function EmergencyPage() {
           {/* Report Now button — green, matches Figma */}
           <button
             onClick={handleReport}
+            disabled={isPending}
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-700 py-3 text-sm font-extrabold text-white transition hover:bg-emerald-800"
           >
-            <Radio className="h-4 w-4" /> Report Now
+            <Radio className="h-4 w-4" /> {isPending ? 'Reporting…' : 'Report Now'}
           </button>
 
           {/* Warning text below button — matches Figma */}

@@ -50,9 +50,13 @@ type LoginPayload = {
 
 type ResetPasswordPayload = {
   email: string;
-  otp: string;
+  resetToken: string;
   password: string;
-  challengeId?: string;
+};
+
+type PasswordResetVerificationResponse = {
+  message: string;
+  resetToken: string;
 };
 
 const endpointGroups = {
@@ -64,8 +68,9 @@ const endpointGroups = {
   verifyLoginOtp: '/auth/login/verify-otp',
   requestPhoneOtp: '/auth/otp/request',
   resendEmailOtp: '/auth/email/resend-otp',
-  forgotPassword: '/auth/forgot-password',
-  resetPassword: '/auth/reset-password',
+  forgotPassword: '/auth/password/reset-request',
+  verifyPasswordResetOtp: '/auth/password/verify-otp',
+  resetPassword: '/auth/password/reset',
   googleAuthorize: '/auth/oauth2/authorize/google',
   me: '/auth/me',
 };
@@ -92,7 +97,15 @@ function getString(source: Record<string, unknown>, keys: string[]) {
 }
 
 function normalizeAuthResponse(payload: unknown): AuthFlowResponse {
-  const body = unwrapResponse<Record<string, unknown>>(payload) ?? {};
+  const unwrapped = unwrapResponse<unknown>(payload);
+  if (typeof unwrapped === 'string') {
+    return {
+      message: unwrapped,
+      requiresOtp: false,
+    };
+  }
+
+  const body = (unwrapped && typeof unwrapped === 'object' ? unwrapped : {}) as Record<string, unknown>;
   const rawUser = (body.user ?? body.account ?? body.profile) as (Partial<User> & Record<string, unknown>) | undefined;
   const accessToken = getString(body, ['accessToken', 'access_token', 'token', 'jwt']);
   const refreshToken = getString(body, ['refreshToken', 'refresh_token']);
@@ -135,8 +148,32 @@ function normalizeAuthResponse(payload: unknown): AuthFlowResponse {
 
 export function getApiErrorMessage(error: unknown, fallback = 'Something went wrong. Please try again.') {
   if (axios.isAxiosError(error)) {
-    const axiosError = error as AxiosError<{ message?: string; error?: string; data?: { message?: string } }>;
-    return axiosError.response?.data?.message ?? axiosError.response?.data?.data?.message ?? axiosError.response?.data?.error ?? fallback;
+    const axiosError = error as AxiosError<unknown>;
+    const data = axiosError.response?.data;
+
+    if (typeof data === 'string' && data.trim()) return data;
+    if (data && typeof data === 'object') {
+      const body = data as {
+        message?: unknown;
+        error?: unknown;
+        detail?: unknown;
+        data?: { message?: unknown; error?: unknown };
+        errors?: Array<{ message?: unknown; defaultMessage?: unknown }> | Record<string, unknown>;
+      };
+      const candidates = [
+        body.message,
+        body.data?.message,
+        body.error,
+        body.data?.error,
+        body.detail,
+        Array.isArray(body.errors) ? body.errors[0]?.message ?? body.errors[0]?.defaultMessage : undefined,
+      ];
+      const message = candidates.find((value) => typeof value === 'string' && value.trim());
+      if (typeof message === 'string') return message;
+    }
+
+    if (axiosError.message && !axiosError.response) return axiosError.message;
+    return fallback;
   }
 
   return error instanceof Error ? error.message : fallback;
@@ -147,8 +184,8 @@ export async function registerUser(payload: RegisterPayload) {
   const { data } = await apiClient.post(endpointGroups.register, {
     firstName: name.firstName,
     lastName: name.lastName,
-    email: payload.email,
-    phoneNumber: payload.phoneNumber,
+    email: payload.email.trim().toLowerCase(),
+    phoneNumber: payload.phoneNumber.trim(),
     password: payload.password,
   });
   return normalizeAuthResponse(data);
@@ -171,34 +208,54 @@ export async function verifyOtp(pending: PendingOtpChallenge, otp: string) {
   const endpoint =
     pending.purpose === 'login'
       ? endpointGroups.verifyLoginOtp
-      : pending.phoneNumber
+      : pending.phoneNumber && !pending.email
         ? endpointGroups.verifyRegistrationPhoneOtp
         : endpointGroups.verifyRegistrationEmailOtp;
-  const payload = pending.phoneNumber && pending.purpose === 'registration'
-    ? { phoneNumber: pending.phoneNumber, otp }
-    : { email: pending.email, otp };
+  const normalizedOtp = otp.trim();
+  const payload = endpoint === endpointGroups.verifyRegistrationPhoneOtp
+    ? { phoneNumber: pending.phoneNumber?.trim(), otp: normalizedOtp }
+    : { email: pending.email.trim().toLowerCase(), otp: normalizedOtp };
   const { data } = await apiClient.post(endpoint, payload);
   return normalizeAuthResponse(data);
 }
 
 export async function resendOtp(pending: PendingOtpChallenge) {
-  const { data } = pending.phoneNumber && pending.purpose === 'registration'
-    ? await apiClient.post(endpointGroups.requestPhoneOtp, { phoneNumber: pending.phoneNumber })
-    : await apiClient.post(endpointGroups.resendEmailOtp, { email: pending.email });
+  const request =
+    pending.purpose === 'registration'
+      ? apiClient.post(endpointGroups.resendEmailOtp, { email: pending.email.trim().toLowerCase() })
+      : pending.phoneNumber && !pending.email
+        ? apiClient.post(endpointGroups.requestPhoneOtp, { phoneNumber: pending.phoneNumber.trim() })
+        : apiClient.post(endpointGroups.resendEmailOtp, { email: pending.email.trim().toLowerCase() });
+  const { data } = await request;
   return normalizeAuthResponse(data);
 }
 
 export async function requestPasswordReset(email: string) {
-  const { data } = await apiClient.post(endpointGroups.forgotPassword, { email });
+  const { data } = await apiClient.post(endpointGroups.forgotPassword, { email: email.trim().toLowerCase() });
   return normalizeAuthResponse(data);
+}
+
+export async function verifyPasswordResetOtp(email: string, otp: string): Promise<PasswordResetVerificationResponse> {
+  const { data } = await apiClient.post(endpointGroups.verifyPasswordResetOtp, {
+    email: email.trim().toLowerCase(),
+    otp: otp.trim(),
+  });
+  const unwrapped = unwrapResponse<unknown>(data);
+  const body = (unwrapped && typeof unwrapped === 'object' ? unwrapped : {}) as Record<string, unknown>;
+  const stringPayload = typeof unwrapped === 'string' ? unwrapped.trim() : '';
+  const resetToken = getString(body, ['resetToken', 'token', 'passwordResetToken', 'jwt'])
+    ?? (stringPayload.split('.').length === 3 ? stringPayload : undefined);
+
+  return {
+    message: (getString(body, ['message']) ?? (resetToken === stringPayload ? 'Reset code verified' : stringPayload)) || 'Reset code verified',
+    resetToken: resetToken ?? '',
+  };
 }
 
 export async function resetPassword(payload: ResetPasswordPayload) {
   const { data } = await apiClient.post(endpointGroups.resetPassword, {
-    email: payload.email,
-    otp: payload.otp,
-    token: payload.challengeId,
-    password: payload.password,
+    email: payload.email.trim().toLowerCase(),
+    resetToken: payload.resetToken.trim(),
     newPassword: payload.password,
   });
   return normalizeAuthResponse(data);
@@ -210,17 +267,9 @@ export async function getCurrentUser() {
 }
 
 export async function getGoogleAuthorizeUrl() {
-  const { data } = await apiClient.get(endpointGroups.googleAuthorize);
-  const body = unwrapResponse<Record<string, unknown>>(data) ?? {};
-  return getString(body, ['url', 'authorizationUrl', 'redirectUrl', 'authUrl']) ?? (typeof data === 'string' ? data : undefined);
+  return getGoogleLoginUrl();
 }
 
 export function getGoogleLoginUrl() {
-  if (typeof window === 'undefined') return `${API_ROOT_URL}/api/v1${endpointGroups.googleAuthorize}`;
-
-  const callbackUrl = new URL('/auth/google/callback', window.location.origin);
-  return `${API_ROOT_URL}/api/v1${endpointGroups.googleAuthorize}?${new URLSearchParams({
-    redirect_uri: callbackUrl.toString(),
-    state: 'umudugudu-google-login',
-  }).toString()}`;
+  return `${API_ROOT_URL}/api/v1${endpointGroups.googleAuthorize}`;
 }

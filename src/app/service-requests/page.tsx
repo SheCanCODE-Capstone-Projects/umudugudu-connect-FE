@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useAppSelector } from '@/hooks/redux';
-import { useMyRequests, usePendingRequests, useSubmitRequest, useReviewRequest } from '@/hooks/useServiceRequests';
+import { useMyRequests, useMyQueue, useAllQueue, useSubmitRequest, useReviewRequest } from '@/hooks/useServiceRequests';
 import { formatDate } from '@/lib/utils/format';
 import type { RequestType, RequestStatus, ServiceRequest } from '@/types';
 
@@ -93,8 +93,10 @@ function MyRequests() {
 }
 
 // ─── Leader: Review queue (US-5.2) ────────────────────────────────
-function ReviewQueue() {
-  const { data: requests = [], isLoading } = usePendingRequests();
+function ReviewQueue({ role }: { role: 'ISIBO_LEADER' | 'VILLAGE_LEADER' | 'ADMIN' }) {
+  const isibo   = useMyQueue();
+  const all     = useAllQueue();
+  const { data: requests = [], isLoading } = role === 'ISIBO_LEADER' ? isibo : all;
   const { mutate: review, isPending }      = useReviewRequest();
   const [selected, setSelected]            = useState<ServiceRequest | null>(null);
   const [response, setResponse]            = useState('');
@@ -151,8 +153,8 @@ function ReviewQueue() {
 // ─── Page ──────────────────────────────────────────────────────────
 export default function ServiceRequestsPage() {
   const user = useAppSelector((s) => s.auth.user);
-  const isLeader = user?.role === 'VILLAGE_LEADER' || user?.role === 'ISIBO_LEADER';
-  const isCitizen = !isLeader;
+  const isLeader  = user?.role === 'VILLAGE_LEADER' || user?.role === 'ISIBO_LEADER' || user?.role === 'ADMIN';
+  const isCitizen = user?.role === 'CITIZEN';
 
   const [tab, setTab] = useState<'submit' | 'my'>('submit');
 
@@ -177,7 +179,7 @@ export default function ServiceRequestsPage() {
       {isLeader && (
         <>
           <p className="text-sm text-gray-500 mb-4">Review and action pending requests from citizens in your area.</p>
-          <ReviewQueue />
+          <ReviewQueue role={user!.role as 'ISIBO_LEADER' | 'VILLAGE_LEADER' | 'ADMIN'} />
         </>
       )}
     </div>

@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
-import { getActivityMembers, saveAttendance } from '@/lib/api/attendance';
+import { getActivityAttendance, saveAttendance, syncAttendance } from '@/lib/api/attendance';
 import type { AttendanceRecord, AttendanceStatus } from '@/types';
 
 const OFFLINE_KEY = 'attendance_offline_queue';
@@ -14,10 +14,10 @@ function setQueue(q: OfflineEntry[]) {
   localStorage.setItem(OFFLINE_KEY, JSON.stringify(q));
 }
 
-export function useActivityMembers(activityId: string) {
+export function useActivityAttendance(activityId: string) {
   return useQuery<AttendanceRecord[]>({
     queryKey: ['attendance', activityId],
-    queryFn: () => getActivityMembers(activityId),
+    queryFn: () => getActivityAttendance(activityId),
     enabled: !!activityId,
   });
 }
@@ -30,7 +30,6 @@ export function useSaveAttendance(activityId: string) {
       saveAttendance(activityId, records),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['attendance', activityId] }),
     onError: (_err, records) => {
-      // persist to offline queue
       const q = getQueue();
       q.push({ activityId, records });
       setQueue(q);
@@ -45,7 +44,7 @@ export function useSaveAttendance(activityId: string) {
       const remaining: OfflineEntry[] = [];
       for (const entry of q) {
         try {
-          await saveAttendance(entry.activityId, entry.records);
+          await syncAttendance(entry.activityId, entry.records);
           qc.invalidateQueries({ queryKey: ['attendance', entry.activityId] });
         } catch {
           remaining.push(entry);

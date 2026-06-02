@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { useActivityMembers, useSaveAttendance } from '@/hooks/useAttendance';
+import { useActivityAttendance, useSaveAttendance } from '@/hooks/useAttendance';
 import type { AttendanceStatus } from '@/types';
 
 const STATUS_STYLES: Record<AttendanceStatus, string> = {
@@ -17,7 +17,7 @@ export default function AttendancePage() {
   const searchParams  = useSearchParams();
   const activityId    = searchParams.get('activityId') ?? '';
 
-  const { data: members = [], isLoading, isError } = useActivityMembers(activityId);
+  const { data: members = [], isLoading, isError } = useActivityAttendance(activityId);
   const { mutate: save, isPending }                 = useSaveAttendance(activityId);
 
   const [statuses, setStatuses] = useState<Record<string, AttendanceStatus>>({});

@@ -2,19 +2,11 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { getNotificationPreferences } from '@/lib/api/notifications';
 import {
-  Bell,
-  CalendarDays,
-  ChevronLeft,
-  CreditCard,
-  FileText,
-  Grid2X2,
-  Home,
-  Info,
-  Megaphone,
-  Settings,
-  UserRound,
-  UsersRound,
+  Bell, CalendarDays, ChevronLeft, CreditCard, FileText,
+  Grid2X2, Home, Info, Megaphone, Settings, UserRound, UsersRound,
 } from 'lucide-react';
 import { getStoredAuthUser } from '@/lib/auth/session';
 
@@ -196,22 +188,23 @@ export default function NotificationsPage() {
   const [notifications, setNotifications] = useState<UserNotification[]>([]);
   const [openNotificationId, setOpenNotificationId] = useState<string | null>(null);
 
+  const { data: preferences } = useQuery({
+    queryKey: ['notification-preferences'],
+    queryFn: getNotificationPreferences,
+  });
+
   useEffect(() => {
     const user = getStoredAuthUser() as CurrentUser | null;
     setCurrentUser(user);
-
     if (!user) return;
-
     const allNotifications = getJson<UserNotification[]>(localStorage, USER_NOTIFICATIONS_KEY, []);
     const storedNotifications = allNotifications
       .filter((notification) => notification.email === user.email)
       .sort((a, b) => b.createdAt - a.createdAt);
-
     if (storedNotifications.length > 0) {
       setNotifications(storedNotifications);
       return;
     }
-
     const fallbackNotifications = getFallbackNotifications(user.email);
     localStorage.setItem(USER_NOTIFICATIONS_KEY, JSON.stringify([...allNotifications, ...fallbackNotifications]));
     setNotifications(fallbackNotifications);

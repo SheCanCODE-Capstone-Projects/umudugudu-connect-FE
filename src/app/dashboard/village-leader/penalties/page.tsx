@@ -17,7 +17,7 @@ export default function PenaltiesPage() {
   } = usePenalties();
 
   useEffect(() => {
-    searchPenalties({});
+    searchPenalties();
   }, []);
 
   useEffect(() => {
@@ -63,14 +63,14 @@ export default function PenaltiesPage() {
         {(['UNPAID', 'PAID', 'WAIVED'] as const).map((status) => (
           <button
             key={status}
-            onClick={() => searchPenalties({ status })}
+            onClick={() => searchPenalties()}
             className="px-3 py-1 rounded-full text-xs font-medium border hover:bg-gray-50"
           >
             {status}
           </button>
         ))}
         <button
-          onClick={() => searchPenalties({})}
+          onClick={() => searchPenalties()}
           className="px-3 py-1 rounded-full text-xs font-medium border hover:bg-gray-50"
         >
           ALL

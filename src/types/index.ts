@@ -220,6 +220,7 @@ export interface CitizenPenaltyView {
   status:        PenaltyStatus;
   reason?:       string;
   paidAt?:       string;
+  dueDate?:      string;
 }
 
 export interface HouseholdPenaltySummary {

@@ -1,502 +1,385 @@
-"use client";
+'use client';
 
-import { useState, useEffect } from "react";
-import { getPayments } from "@/lib/api/payments";
+import { useEffect, useMemo, useState } from 'react';
+import toast from 'react-hot-toast';
+import { Download, Loader2, RefreshCw, Search } from 'lucide-react';
+import { exportPaymentsCsv, filterPaymentRecords, getVillagePayments, PaymentFilters, PaymentRecord } from '@/lib/api/payments';
+import { getApiErrorMessage } from '@/lib/api/auth';
 
+const PAGE_SIZE = 20;
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-type PaymentType = "penalty" | "contribution";
-type PaymentMethod = "mobile_money" | "cash" | "bank";
-const PAGE_SIZE = 6;
-interface Payment {
-  id: string;
-  amount: number;
-  paymentType: string;
-  paymentMethod: string;
-  createdAt: string;
-  status?: string;
+const formatAmount = (amount: number) =>
+  new Intl.NumberFormat('en-RW', {
+    style: 'currency',
+    currency: 'RWF',
+    maximumFractionDigits: 0,
+  }).format(amount);
 
-  citizen?: {
-    firstName: string;
-    lastName: string;
-  };
+const formatTimestamp = (value: string) => {
+  const time = new Date(value).getTime();
+  if (Number.isNaN(time)) return '-';
+  return new Intl.DateTimeFormat('en-RW', {
+    month: 'short',
+    day: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(time);
+};
 
-  village?: {
-    name: string;
-  };
-}
+const statusClass = (status: string) => {
+  const normalized = status.toUpperCase();
+  if (normalized === 'PAID' || normalized === 'COMPLETED') return 'bg-emerald-50 text-emerald-700';
+  if (normalized === 'FAILED' || normalized === 'CANCELLED') return 'bg-red-50 text-red-700';
+  return 'bg-yellow-50 text-yellow-800';
+};
 
+const csvEscape = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-function formatAmount(n: number) {
-    return `RWF ${n.toLocaleString()}`;
-}
+const buildCsv = (records: PaymentRecord[]) => {
+  const header = ['Citizen ID', 'Citizen Name', 'Amount', 'Type', 'Payment Method', 'Village', 'Isibo', 'Timestamp'];
+  const rows = records.map((record) => [
+    record.citizenId ?? '',
+    record.citizenName,
+    record.amount,
+    record.paymentType,
+    record.paymentMethod,
+    record.village ?? '',
+    record.isibo ?? '',
+    record.timestamp,
+  ]);
+  return [header, ...rows].map((row) => row.map(csvEscape).join(',')).join('\r\n');
+};
 
-function formatDate(iso: string) {
-    return new Date(iso).toLocaleString("en-RW", {
-        day: "2-digit", month: "short", year: "numeric",
-        hour: "2-digit", minute: "2-digit",
-    });
-}
+const downloadBlob = (blob: Blob, filename: string) => {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+};
 
-function methodLabel(m: PaymentMethod) {
-    return { mobile_money: "Mobile Money", cash: "Cash", bank: "Bank Transfer" }[m];
-}
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
-function StatCard({ label, value, accent, icon }: { label: string; value: string; accent: string; icon: string }) {
-    return (
-        <div className={`stat-card ${accent}`}>
-            <span className="stat-icon">{icon}</span>
-            <div>
-                <p className="stat-label">{label}</p>
-                <p className="stat-value">{value}</p>
-            </div>
-        </div>
-    );
-}
-
-function Badge({ type }: { type: PaymentType }) {
-    return (
-        <span className={`badge badge-${type}`}>
-            {type === "penalty" ? "⚠ Penalty" : "✦ Contribution"}
-        </span>
-    );
-}
-
-function StatusPill({ status }: { status: "paid" | "pending" }) {
-    return (
-        <span className={`status-pill status-${status}`}>
-            {status === "paid" ? "● Paid" : "○ Pending"}
-        </span>
-    );
-}
-
-// ─── Main Page ────────────────────────────────────────────────────────────────
 export default function PaymentsDashboard() {
-  const [payments, setPayments] = useState<Payment[]>([]);
+  const [records, setRecords] = useState<PaymentRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [exporting, setExporting] = useState(false);
+  const [error, setError] = useState('');
+  const [page, setPage] = useState(0);
+  const [sort, setSort] = useState<'timestamp-desc' | 'timestamp-asc' | 'amount-desc' | 'amount-asc'>('timestamp-desc');
+  const [filters, setFilters] = useState<PaymentFilters>({
+    search: '',
+    from: '',
+    to: '',
+    isibo: '',
+    paymentType: '',
+    status: '',
+  });
 
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  const [page, setPage] = useState(1);
+  const loadPayments = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const response = await getVillagePayments({ page: 0, size: 200 });
+      setRecords(response.content);
+    } catch (error) {
+      const message = getApiErrorMessage(error, 'Failed to load payment records');
+      setError(message);
+      toast.error(message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchPayments = async () => {
-      try {
-        setLoading(true);
-
-        const data = await getPayments();
-
-        setPayments(data.data || data);
-      } catch (err) {
-        console.error(err);
-        setError("Failed to load payments");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchPayments();
+    void loadPayments();
   }, []);
 
   useEffect(() => {
-    setPage(1);
-  }, [dateFrom, dateTo]);
+    setPage(0);
+  }, [filters, sort]);
 
-  if (loading) {
-    return (
-      <div className="p-8">
-        Loading payment records...
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="p-8 text-red-500">
-        {error}
-      </div>
-    );
-  }
-
-  const filtered = payments.filter((p) => {
-    const ts = new Date(p.createdAt);
-
-    if (dateFrom && ts < new Date(dateFrom)) {
-      return false;
-    }
-
-    if (dateTo && ts > new Date(`${dateTo}T23:59:59`)) {
-      return false;
-    }
-
-    return true;
-  });
-
-  const totalCollected = filtered.reduce(
-    (sum, payment) => sum + payment.amount,
-    0
+  const isiboOptions = useMemo(
+    () => Array.from(new Set(records.map((record) => record.isibo).filter(Boolean))).sort() as string[],
+    [records]
   );
 
-  const totalPending = filtered
-    .filter((payment) => payment.status === "PENDING")
-    .reduce((sum, payment) => sum + payment.amount, 0);
+  const filteredRecords = useMemo(() => {
+    const filtered = filterPaymentRecords(records, filters);
+    return [...filtered].sort((a, b) => {
+      if (sort === 'amount-asc') return a.amount - b.amount;
+      if (sort === 'amount-desc') return b.amount - a.amount;
+      const left = new Date(a.timestamp).getTime();
+      const right = new Date(b.timestamp).getTime();
+      return sort === 'timestamp-asc' ? left - right : right - left;
+    });
+  }, [records, filters, sort]);
 
-  const totalTransactions = filtered.length;
+  const pageCount = Math.max(1, Math.ceil(filteredRecords.length / PAGE_SIZE));
+  const visibleRecords = filteredRecords.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
+  const thisMonth = new Date();
+  const monthStart = new Date(thisMonth.getFullYear(), thisMonth.getMonth(), 1).getTime();
+  const totalCollected = filteredRecords
+    .filter((record) => new Date(record.timestamp).getTime() >= monthStart)
+    .filter((record) => ['PAID', 'COMPLETED'].includes(record.status.toUpperCase()))
+    .reduce((sum, record) => sum + record.amount, 0);
+  const pendingAmount = filteredRecords
+    .filter((record) => record.status.toUpperCase() === 'PENDING')
+    .reduce((sum, record) => sum + record.amount, 0);
 
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+  const updateFilter = (key: keyof PaymentFilters, value: string) => {
+    setFilters((current) => ({ ...current, [key]: value }));
+  };
 
-  const paginated = filtered.slice(
-    (page - 1) * PAGE_SIZE,
-    page * PAGE_SIZE
-  );
+  const resetFilters = () => {
+    setFilters({ search: '', from: '', to: '', isibo: '', paymentType: '', status: '' });
+    setSort('timestamp-desc');
+  };
 
+  const handleExport = async () => {
+    if (!filters.from || !filters.to) {
+      toast.error('Select a date range before exporting');
+      return;
+    }
 
-    return (
-        <>
-            <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+    try {
+      setExporting(true);
+      const hasOnlyDateFilters = !filters.search && !filters.isibo && !filters.paymentType && !filters.status;
+      if (hasOnlyDateFilters) {
+        const blob = await exportPaymentsCsv(filters.from, filters.to);
+        downloadBlob(blob, `payment-reconciliation-${filters.from}-to-${filters.to}.csv`);
+      } else {
+        downloadBlob(new Blob([buildCsv(filteredRecords)], { type: 'text/csv;charset=utf-8' }), `payment-reconciliation-filtered.csv`);
+      }
+      toast.success('Payment export downloaded');
+    } catch (error) {
+      const message = getApiErrorMessage(error, 'Could not export payment records');
+      toast.error(message);
+    } finally {
+      setExporting(false);
+    }
+  };
 
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  return (
+    <main className="min-h-screen bg-[#f8fafc] px-4 py-6 text-gray-950">
+      <section className="mx-auto w-full max-w-7xl">
+        <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h1 className="text-2xl font-extrabold text-gray-950">Payment Records</h1>
+            <p className="mt-1 text-sm text-gray-500">Real-time mobile money records for village penalties and contributions.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={loadPayments}
+              disabled={loading}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-3 text-sm font-bold text-gray-700 transition hover:bg-gray-50 disabled:opacity-60"
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
+            <button
+              type="button"
+              onClick={handleExport}
+              disabled={exporting}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#008c3a] px-3 text-sm font-bold text-white transition hover:bg-emerald-800 disabled:bg-emerald-300"
+            >
+              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              Export CSV
+            </button>
+          </div>
+        </div>
 
-        :root {
-          --bg: #0b0f1a;
-          --surface: #111827;
-          --surface2: #1a2235;
-          --border: #1e2d45;
-          --accent: #00e5a0;
-          --accent2: #ff6b6b;
-          --accent3: #fbbf24;
-          --text: #e2e8f0;
-          --muted: #64748b;
-          --radius: 12px;
-        }
+        {error ? <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</div> : null}
 
-        body { background: var(--bg); color: var(--text); font-family: 'Sora', sans-serif; }
+        <div className="grid gap-3 md:grid-cols-3">
+          <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+            <p className="text-xs font-bold uppercase text-gray-500">Total Collected This Month</p>
+            <p className="mt-2 text-2xl font-extrabold text-emerald-700">{formatAmount(totalCollected)}</p>
+          </div>
+          <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+            <p className="text-xs font-bold uppercase text-gray-500">Pending Amount</p>
+            <p className="mt-2 text-2xl font-extrabold text-yellow-700">{formatAmount(pendingAmount)}</p>
+          </div>
+          <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+            <p className="text-xs font-bold uppercase text-gray-500">Total Transactions</p>
+            <p className="mt-2 text-2xl font-extrabold text-gray-950">{filteredRecords.length}</p>
+          </div>
+        </div>
 
-        .page {
-          min-height: 100vh;
-          padding: 32px 24px;
-          max-width: 1100px;
-          margin: 0 auto;
-        }
-
-        /* Header */
-        .header { margin-bottom: 32px; }
-        .header-eyebrow {
-          font-size: 11px;
-          letter-spacing: 3px;
-          text-transform: uppercase;
-          color: var(--accent);
-          font-family: 'JetBrains Mono', monospace;
-          margin-bottom: 8px;
-        }
-        .header h1 {
-          font-size: 28px;
-          font-weight: 700;
-          color: var(--text);
-          margin-bottom: 4px;
-        }
-        .header p { color: var(--muted); font-size: 14px; }
-
-        /* Stats */
-        .stats-grid {
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 16px;
-          margin-bottom: 28px;
-        }
-        .stat-card {
-          background: var(--surface);
-          border: 1px solid var(--border);
-          border-radius: var(--radius);
-          padding: 20px;
-          display: flex;
-          align-items: center;
-          gap: 16px;
-          position: relative;
-          overflow: hidden;
-          transition: transform 0.2s;
-        }
-        .stat-card::before {
-          content: '';
-          position: absolute;
-          top: 0; left: 0;
-          width: 3px; height: 100%;
-        }
-        .stat-card.green::before { background: var(--accent); }
-        .stat-card.red::before { background: var(--accent2); }
-        .stat-card.yellow::before { background: var(--accent3); }
-        .stat-card:hover { transform: translateY(-2px); }
-        .stat-icon { font-size: 28px; }
-        .stat-label { font-size: 11px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 4px; }
-        .stat-value { font-size: 20px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
-        .stat-card.green .stat-value { color: var(--accent); }
-        .stat-card.red .stat-value { color: var(--accent2); }
-        .stat-card.yellow .stat-value { color: var(--accent3); }
-
-        /* Filters */
-        .filters {
-          background: var(--surface);
-          border: 1px solid var(--border);
-          border-radius: var(--radius);
-          padding: 20px;
-          display: flex;
-          gap: 16px;
-          align-items: flex-end;
-          margin-bottom: 24px;
-          flex-wrap: wrap;
-        }
-        .filter-group { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 160px; }
-        .filter-group label { font-size: 11px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
-        .filter-group input, .filter-group select {
-          background: var(--surface2);
-          border: 1px solid var(--border);
-          border-radius: 8px;
-          color: var(--text);
-          padding: 10px 12px;
-          font-family: 'Sora', sans-serif;
-          font-size: 13px;
-          outline: none;
-          transition: border-color 0.2s;
-        }
-        .filter-group input:focus, .filter-group select:focus {
-          border-color: var(--accent);
-        }
-        .filter-group select option { background: var(--surface2); }
-        .btn-reset {
-          background: transparent;
-          border: 1px solid var(--border);
-          color: var(--muted);
-          border-radius: 8px;
-          padding: 10px 16px;
-          font-family: 'Sora', sans-serif;
-          font-size: 13px;
-          cursor: pointer;
-          transition: all 0.2s;
-          white-space: nowrap;
-        }
-        .btn-reset:hover { border-color: var(--accent2); color: var(--accent2); }
-
-        /* Table */
-        .table-wrap {
-          background: var(--surface);
-          border: 1px solid var(--border);
-          border-radius: var(--radius);
-          overflow: hidden;
-        }
-        .table-header {
-          padding: 16px 20px;
-          border-bottom: 1px solid var(--border);
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-        .table-title { font-size: 13px; font-weight: 600; color: var(--text); }
-        .table-count {
-          font-size: 11px;
-          color: var(--muted);
-          font-family: 'JetBrains Mono', monospace;
-          background: var(--surface2);
-          padding: 4px 10px;
-          border-radius: 20px;
-        }
-        table { width: 100%; border-collapse: collapse; }
-        thead th {
-          font-size: 11px;
-          color: var(--muted);
-          letter-spacing: 1px;
-          text-transform: uppercase;
-          font-weight: 500;
-          padding: 14px 20px;
-          text-align: left;
-          border-bottom: 1px solid var(--border);
-          background: var(--surface2);
-        }
-        tbody tr {
-          border-bottom: 1px solid var(--border);
-          transition: background 0.15s;
-        }
-        tbody tr:last-child { border-bottom: none; }
-        tbody tr:hover { background: var(--surface2); }
-        tbody td {
-          padding: 14px 20px;
-          font-size: 13px;
-          vertical-align: middle;
-        }
-        .citizen-name { font-weight: 500; color: var(--text); }
-        .citizen-isibo { font-size: 11px; color: var(--muted); margin-top: 2px; }
-        .amount-cell {
-          font-family: 'JetBrains Mono', monospace;
-          font-size: 13px;
-          font-weight: 500;
-          color: var(--text);
-        }
-        .method-cell { color: var(--muted); font-size: 12px; }
-        .ts-cell { font-size: 12px; color: var(--muted); }
-
-        /* Badges */
-        .badge {
-          display: inline-flex;
-          align-items: center;
-          gap: 4px;
-          padding: 4px 10px;
-          border-radius: 20px;
-          font-size: 11px;
-          font-weight: 500;
-          letter-spacing: 0.3px;
-        }
-        .badge-penalty { background: rgba(255,107,107,0.15); color: var(--accent2); border: 1px solid rgba(255,107,107,0.25); }
-        .badge-contribution { background: rgba(0,229,160,0.12); color: var(--accent); border: 1px solid rgba(0,229,160,0.2); }
-
-        .status-pill {
-          font-size: 11px;
-          font-weight: 500;
-        }
-        .status-paid { color: var(--accent); }
-        .status-pending { color: var(--accent3); }
-
-        /* Empty state */
-        .empty {
-          padding: 48px 20px;
-          text-align: center;
-          color: var(--muted);
-        }
-        .empty-icon { font-size: 36px; margin-bottom: 12px; }
-        .empty p { font-size: 14px; }
-
-        /* Pagination */
-        .pagination {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 16px 20px;
-          border-top: 1px solid var(--border);
-        }
-        .pagination-info { font-size: 12px; color: var(--muted); }
-        .pagination-btns { display: flex; gap: 8px; }
-        .btn-page {
-          background: var(--surface2);
-          border: 1px solid var(--border);
-          color: var(--text);
-          border-radius: 6px;
-          padding: 6px 14px;
-          font-size: 12px;
-          font-family: 'Sora', sans-serif;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-        .btn-page:disabled { opacity: 0.35; cursor: not-allowed; }
-        .btn-page:not(:disabled):hover { border-color: var(--accent); color: var(--accent); }
-        .btn-page.active { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; }
-
-        @media (max-width: 700px) {
-          .stats-grid { grid-template-columns: 1fr; }
-          .filters { flex-direction: column; }
-          thead { display: none; }
-          tbody tr { display: block; padding: 12px 0; }
-          tbody td { display: flex; justify-content: space-between; padding: 6px 20px; }
-          tbody td::before { content: attr(data-label); color: var(--muted); font-size: 11px; }
-        }
-      `}</style>
-
-            <div className="page">
-                {/* Header */}
-                <div className="header">
-
-                    <h1>Payment Records</h1>
-                    <p>Real-time overview of all penalties and contributions across your village</p>
-                </div>
-
-                {/* Stats */}
-                <div className="stats-grid">
-                    <StatCard label="Collected This Month" value={formatAmount(totalCollected)} accent="green" icon="💰" />
-                    <StatCard label="Pending Amount" value={formatAmount(totalPending)} accent="red" icon="⏳" />
-                    <StatCard label="Total Transactions" value={String(totalTransactions)} accent="yellow" icon="📋" />
-                </div>
-
-              
-
-                {/* Table */}
-                <div className="table-wrap">
-                    <div className="table-header">
-                        <span className="table-title">Transaction History</span>
-                        <span className="table-count">{filtered.length} records</span>
-                    </div>
-
-                    {paginated.length === 0 ? (
-                        <div className="empty">
-                            <div className="empty-icon">🔍</div>
-                            <p>No records match your filters.</p>
-                        </div>
-                    ) : (
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Citizen</th>
-                                    <th>Amount</th>
-                                    <th>Type</th>
-                                    <th>Method</th>
-                                    <th>Status</th>
-                                    <th>Timestamp</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-  {paginated.map((p) => (
-    <tr key={p.id}>
-      <td>
-        {p.citizen?.firstName ?? "-"}{" "}
-        {p.citizen?.lastName ?? ""}
-      </td>
-
-      <td>
-        RWF {p.amount.toLocaleString()}
-      </td>
-
-      <td>
-        {p.paymentType}
-      </td>
-
-      <td>
-        {p.paymentMethod}
-      </td>
-
-      <td>
-        {p.status ?? "N/A"}
-      </td>
-
-      <td>
-        {new Date(p.createdAt).toLocaleString()}
-      </td>
-    </tr>
-  ))}
-</tbody>
-                        </table>
-                    )}
-
-                    {/* Pagination */}
-                    {totalPages > 1 && (
-                        <div className="pagination">
-                            <span className="pagination-info">
-                                Page {page} of {totalPages} · Showing {paginated.length} of {filtered.length}
-                            </span>
-                            <div className="pagination-btns">
-                                <button className="btn-page" disabled={page === 1} onClick={() => setPage(p => p - 1)}>← Prev</button>
-                                {Array.from({ length: totalPages }, (_, i) => (
-                                    <button
-                                        key={i + 1}
-                                        className={`btn-page ${page === i + 1 ? "active" : ""}`}
-                                        onClick={() => setPage(i + 1)}
-                                    >{i + 1}</button>
-                                ))}
-                                <button className="btn-page" disabled={page === totalPages} onClick={() => setPage(p => p + 1)}>Next →</button>
-                            </div>
-                        </div>
-                    )}
-                </div>
+        <div className="mt-5 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="grid gap-3 lg:grid-cols-6">
+            <label className="lg:col-span-2">
+              <span className="mb-1 block text-xs font-bold uppercase text-gray-500">Search</span>
+              <span className="relative block">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <input
+                  value={filters.search ?? ''}
+                  onChange={(event) => updateFilter('search', event.target.value)}
+                  placeholder="Citizen, method, reference..."
+                  className="h-10 w-full rounded-md border border-gray-300 bg-white pl-9 pr-3 text-sm outline-none focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
+                />
+              </span>
+            </label>
+            <label>
+              <span className="mb-1 block text-xs font-bold uppercase text-gray-500">From</span>
+              <input
+                type="date"
+                value={filters.from ?? ''}
+                onChange={(event) => updateFilter('from', event.target.value)}
+                className="h-10 w-full rounded-md border border-gray-300 bg-white px-3 text-sm outline-none focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
+              />
+            </label>
+            <label>
+              <span className="mb-1 block text-xs font-bold uppercase text-gray-500">To</span>
+              <input
+                type="date"
+                value={filters.to ?? ''}
+                onChange={(event) => updateFilter('to', event.target.value)}
+                className="h-10 w-full rounded-md border border-gray-300 bg-white px-3 text-sm outline-none focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
+              />
+            </label>
+            <label>
+              <span className="mb-1 block text-xs font-bold uppercase text-gray-500">Isibo</span>
+              <select
+                value={filters.isibo ?? ''}
+                onChange={(event) => updateFilter('isibo', event.target.value)}
+                className="h-10 w-full rounded-md border border-gray-300 bg-white px-3 text-sm outline-none focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
+              >
+                <option value="">All isibos</option>
+                {isiboOptions.map((isibo) => <option key={isibo} value={isibo}>{isibo}</option>)}
+              </select>
+            </label>
+            <label>
+              <span className="mb-1 block text-xs font-bold uppercase text-gray-500">Type</span>
+              <select
+                value={filters.paymentType ?? ''}
+                onChange={(event) => updateFilter('paymentType', event.target.value)}
+                className="h-10 w-full rounded-md border border-gray-300 bg-white px-3 text-sm outline-none focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
+              >
+                <option value="">All types</option>
+                <option value="PENALTY">Penalty</option>
+                <option value="CONTRIBUTION">Contribution</option>
+              </select>
+            </label>
+            <label>
+              <span className="mb-1 block text-xs font-bold uppercase text-gray-500">Status</span>
+              <select
+                value={filters.status ?? ''}
+                onChange={(event) => updateFilter('status', event.target.value)}
+                className="h-10 w-full rounded-md border border-gray-300 bg-white px-3 text-sm outline-none focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
+              >
+                <option value="">All statuses</option>
+                <option value="PENDING">Pending</option>
+                <option value="PAID">Paid</option>
+                <option value="COMPLETED">Completed</option>
+                <option value="FAILED">Failed</option>
+              </select>
+            </label>
+            <label>
+              <span className="mb-1 block text-xs font-bold uppercase text-gray-500">Sort</span>
+              <select
+                value={sort}
+                onChange={(event) => setSort(event.target.value as typeof sort)}
+                className="h-10 w-full rounded-md border border-gray-300 bg-white px-3 text-sm outline-none focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
+              >
+                <option value="timestamp-desc">Newest first</option>
+                <option value="timestamp-asc">Oldest first</option>
+                <option value="amount-desc">Amount high</option>
+                <option value="amount-asc">Amount low</option>
+              </select>
+            </label>
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={resetFilters}
+                className="h-10 w-full rounded-md border border-gray-300 bg-white px-3 text-sm font-bold text-gray-700 transition hover:bg-gray-50"
+              >
+                Reset
+              </button>
             </div>
-        </>
-    );
+          </div>
+        </div>
+
+        <section className="mt-5 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+            <h2 className="text-sm font-extrabold text-gray-950">Recent Payments</h2>
+            <span className="text-xs font-bold text-gray-500">
+              Page {page + 1} of {pageCount}
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[920px] text-left text-sm">
+              <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+                <tr>
+                  <th className="px-4 py-3">Citizen Name</th>
+                  <th className="px-4 py-3">Amount</th>
+                  <th className="px-4 py-3">Payment Type</th>
+                  <th className="px-4 py-3">Payment Method</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Timestamp</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {loading ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-10 text-center text-sm font-semibold text-gray-400">
+                      Loading payment records...
+                    </td>
+                  </tr>
+                ) : visibleRecords.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-10 text-center text-sm font-semibold text-gray-400">
+                      No payment records match the current filters.
+                    </td>
+                  </tr>
+                ) : (
+                  visibleRecords.map((record) => (
+                    <tr key={record.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 font-bold text-gray-950">
+                        {record.citizenName}
+                        {record.isibo ? <p className="mt-1 text-xs font-semibold text-gray-500">{record.isibo}</p> : null}
+                      </td>
+                      <td className="px-4 py-3 font-semibold text-gray-900">{formatAmount(record.amount)}</td>
+                      <td className="px-4 py-3 text-gray-700">{record.paymentType}</td>
+                      <td className="px-4 py-3 text-gray-700">{record.paymentMethod}</td>
+                      <td className="px-4 py-3">
+                        <span className={`rounded-full px-3 py-1 text-xs font-bold ${statusClass(record.status)}`}>{record.status}</span>
+                      </td>
+                      <td className="px-4 py-3 text-gray-600">{formatTimestamp(record.timestamp)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex flex-col gap-3 border-t border-gray-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs font-semibold text-gray-500">
+              Showing {visibleRecords.length} of {filteredRecords.length} records
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setPage((current) => Math.max(0, current - 1))}
+                disabled={page === 0}
+                className="h-9 rounded-md border border-gray-300 bg-white px-3 text-sm font-bold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                onClick={() => setPage((current) => Math.min(pageCount - 1, current + 1))}
+                disabled={page >= pageCount - 1}
+                className="h-9 rounded-md border border-gray-300 bg-white px-3 text-sm font-bold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </section>
+      </section>
+    </main>
+  );
 }

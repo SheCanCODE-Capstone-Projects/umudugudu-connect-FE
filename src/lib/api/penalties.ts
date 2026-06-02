@@ -26,6 +26,19 @@ export const getVillagePenalties = async (): Promise<PageResponse<Penalty>> => {
   return response.data.data;
 };
 
+// Get citizen's own penalties (US-3.2)
+export const getMyCitizenPenalties = async (): Promise<CitizenPenaltyView[]> => {
+  const response = await apiClient.get('/penalties/my');
+  const data = unwrap(response.data);
+  const body = asRecord(data);
+  const rows = Array.isArray(data)
+    ? data
+    : Array.isArray(body.content)
+      ? body.content
+      : Array.isArray(body.penalties)
+        ? body.penalties
+        : [];
+  return rows.map(normalizeCitizenPenalty);
 // GET /api/v1/penalties/my
 export const getMyPenalties = async (): Promise<CitizenPenaltyView[]> => {
   const response = await apiClient.get<ApiResponse<CitizenPenaltyView[]>>('/penalties/my');

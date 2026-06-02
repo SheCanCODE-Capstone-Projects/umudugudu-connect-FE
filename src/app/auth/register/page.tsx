@@ -8,14 +8,14 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ArrowLeft, CheckCheck, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { UserRole } from '@/types';
+import { getApiErrorMessage, registerUser } from '@/lib/api/auth';
+import { getDashboardPath } from '@/lib/auth/routes';
+import { PENDING_OTP_KEY, saveAuthSession } from '@/lib/auth/session';
+import { maskEmail, normalizeRwandaPhone, isValidRwandaPhone } from '@/lib/utils/authFormat';
+import { useAppDispatch } from '@/hooks/redux';
+import { setUser } from '@/store/slices/authSlice';
 
-const DEFAULT_USER_ROLE: UserRole = 'CITIZEN';
-const PENDING_OTP_KEY = 'umudugudu_pending_otp_login';
-
-const normalizeRwandaPhone = (value: string) => value.replace(/\D/g, '');
-
-const isValidRwandaPhone = (value: string) => /^07[2389]\d{7}$/.test(normalizeRwandaPhone(value));
+const DEFAULT_USER_ROLE = 'CITIZEN';
 
 const registerSchema = z
   .object({
@@ -46,36 +46,9 @@ const registerSchema = z
 
 type RegisterFormValues = z.infer<typeof registerSchema>;
 
-const REGISTERED_USERS_KEY = 'umudugudu_registered_users';
-
-type StoredUser = {
-  fullName: string;
-  phoneNumber: string;
-  email: string;
-  role: UserRole | null;
-  password: string;
-  registeredAt?: number;
-  roleAssignedAt?: number;
-  isVerified?: boolean;
-  verifiedAt?: number;
-};
-
-const getStoredUsers = () => {
-  try {
-    return JSON.parse(localStorage.getItem(REGISTERED_USERS_KEY) ?? '[]') as StoredUser[];
-  } catch {
-    return [];
-  }
-};
-
-const maskEmail = (email: string) => {
-  const [name, domain] = email.split('@');
-  if (!name || !domain) return email;
-  return `${name.slice(0, 2)}${'*'.repeat(Math.max(name.length - 2, 3))}@${domain}`;
-};
-
 export default function RegisterPage() {
   const router = useRouter();
+  const dispatch = useAppDispatch();
   const [showPassword, setShowPassword] = useState(false);
   const {
     register,
@@ -100,42 +73,44 @@ export default function RegisterPage() {
     } ${extra}`;
 
   const onSubmit = async (values: RegisterFormValues) => {
-    /*
-      Frontend-only demo storage until backend registration exists.
-      Backend should own user creation and password storage in production.
-    */
     const normalizedEmail = values.email.toLowerCase();
-    const existingUsers = getStoredUsers();
-    const nextUsers = [
-      ...existingUsers.filter((user) => user.email !== normalizedEmail),
-      {
+
+    try {
+      const response = await registerUser({
         fullName: values.fullName,
         phoneNumber: normalizeRwandaPhone(values.phoneNumber),
         email: normalizedEmail,
-        role: DEFAULT_USER_ROLE,
         password: values.password,
-        registeredAt: Date.now(),
-        roleAssignedAt: Date.now(),
-        isVerified: false,
-      },
-    ];
+      });
 
-    localStorage.setItem(REGISTERED_USERS_KEY, JSON.stringify(nextUsers));
-    sessionStorage.setItem(
-      PENDING_OTP_KEY,
-      JSON.stringify({
-        purpose: 'registration',
-        email: normalizedEmail,
-        fullName: values.fullName,
-        maskedEmail: maskEmail(normalizedEmail),
-        contactLabel: maskEmail(normalizedEmail),
-        role: DEFAULT_USER_ROLE,
-        dashboardPath: '/auth/login',
-        requestedAt: Date.now(),
-      })
-    );
-    toast.success('OTP code sent for account verification');
-    router.push('/auth/otp-login');
+      if (response.auth) {
+        saveAuthSession(response.auth);
+        dispatch(setUser(response.auth.user));
+        toast.success(response.message || 'Registration successful');
+        router.push(getDashboardPath(response.auth.user.role));
+        return;
+      }
+
+      sessionStorage.setItem(
+        PENDING_OTP_KEY,
+        JSON.stringify({
+          purpose: 'registration',
+          challengeId: response.challengeId,
+          email: response.email ?? normalizedEmail,
+          phoneNumber: response.phoneNumber ?? normalizeRwandaPhone(values.phoneNumber),
+          fullName: response.fullName ?? values.fullName,
+          maskedEmail: maskEmail(response.email ?? normalizedEmail),
+          contactLabel: maskEmail(response.email ?? normalizedEmail),
+          role: response.role ?? DEFAULT_USER_ROLE,
+          dashboardPath: '/auth/login',
+          requestedAt: Date.now(),
+        })
+      );
+      toast.success(response.message || 'OTP code sent for account verification');
+      router.push('/auth/otp-login');
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, 'Registration failed. Please check your details.'));
+    }
   };
 
   return (

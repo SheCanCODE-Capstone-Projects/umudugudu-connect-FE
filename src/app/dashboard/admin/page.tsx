@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { UserRole } from '@/types';
+import { User, UserRole } from '@/types';
+import { getApiErrorMessage } from '@/lib/api/auth';
+import { searchUsers, updateUserRole } from '@/lib/api/users';
 import LogoutButton, { useRedirectLoggedOut } from '@/components/shared/LogoutButton';
 
-const REGISTERED_USERS_KEY = 'umudugudu_registered_users';
 const USER_NOTIFICATIONS_KEY = 'umudugudu_user_notifications';
 
 const assignableRoles: Array<{ value: UserRole; label: string }> = [
@@ -22,16 +23,6 @@ const roleLabels: Record<UserRole, string> = {
   ADMIN: 'Admin',
 };
 
-type StoredUser = {
-  fullName: string;
-  phoneNumber: string;
-  email: string;
-  role: UserRole | null;
-  password: string;
-  registeredAt?: number;
-  roleAssignedAt?: number;
-};
-
 type UserNotification = {
   id: string;
   email: string;
@@ -39,14 +30,6 @@ type UserNotification = {
   message: string;
   createdAt: number;
   isRead: boolean;
-};
-
-const getStoredUsers = () => {
-  try {
-    return JSON.parse(localStorage.getItem(REGISTERED_USERS_KEY) ?? '[]') as StoredUser[];
-  } catch {
-    return [];
-  }
 };
 
 const getNotifications = () => {
@@ -60,50 +43,50 @@ const getNotifications = () => {
 export default function AdminDashboard() {
   useRedirectLoggedOut();
 
-  const [users, setUsers] = useState<StoredUser[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [selectedRoles, setSelectedRoles] = useState<Record<string, UserRole>>({});
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const storedUsers = getStoredUsers();
-    setUsers(storedUsers);
-    setSelectedRoles(
-      Object.fromEntries(
-        storedUsers.map((user) => [user.email, user.role ?? 'CITIZEN'])
-      ) as Record<string, UserRole>
-    );
+    searchUsers({})
+      .then((result) => {
+        setUsers(result.content);
+        setSelectedRoles(
+          Object.fromEntries(
+            result.content.map((user) => [user.id, user.role ?? 'CITIZEN'])
+          ) as Record<string, UserRole>
+        );
+      })
+      .catch((error) => toast.error(getApiErrorMessage(error, 'Failed to load users')))
+      .finally(() => setIsLoading(false));
   }, []);
 
-  const assignRole = (email: string) => {
-    const nextRole = selectedRoles[email];
-    const targetUser = users.find((user) => user.email === email);
+  const assignRole = async (userId: string) => {
+    const nextRole = selectedRoles[userId];
+    const targetUser = users.find((user) => user.id === userId);
     if (!targetUser || !nextRole) return;
 
-    const nextUsers = users.map((user) =>
-      user.email === email
-        ? {
-            ...user,
-            role: nextRole,
-            roleAssignedAt: Date.now(),
-          }
-        : user
-    );
-
-    const nextNotifications = [
-      ...getNotifications(),
-      {
-        id: crypto.randomUUID(),
-        email,
-        title: 'Role assigned',
-        message: `Admin assigned your account role as ${roleLabels[nextRole]}.`,
-        createdAt: Date.now(),
-        isRead: false,
-      },
-    ];
-
-    localStorage.setItem(REGISTERED_USERS_KEY, JSON.stringify(nextUsers));
-    localStorage.setItem(USER_NOTIFICATIONS_KEY, JSON.stringify(nextNotifications));
-    setUsers(nextUsers);
-    toast.success(`${targetUser.fullName} is now ${roleLabels[nextRole]}`);
+    try {
+      const updatedUser = await updateUserRole({ userId, role: nextRole });
+      setUsers((currentUsers) => currentUsers.map((user) => (user.id === userId ? updatedUser : user)));
+      if (targetUser.email) {
+        const nextNotifications = [
+          ...getNotifications(),
+          {
+            id: crypto.randomUUID(),
+            email: targetUser.email,
+            title: 'Role assigned',
+            message: `Admin assigned your account role as ${roleLabels[nextRole]}.`,
+            createdAt: Date.now(),
+            isRead: false,
+          },
+        ];
+        localStorage.setItem(USER_NOTIFICATIONS_KEY, JSON.stringify(nextNotifications));
+      }
+      toast.success(`${targetUser.fullName} is now ${roleLabels[nextRole]}`);
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, 'Failed to assign role'));
+    }
   };
 
   const adminUsers = users.filter((user) => user.role === 'ADMIN').length;
@@ -137,18 +120,20 @@ export default function AdminDashboard() {
           <span className="badge-blue">{users.length} users</span>
         </div>
 
-        {users.length === 0 ? (
+        {isLoading ? (
+          <p className="py-8 text-center text-sm text-gray-500">Loading users...</p>
+        ) : users.length === 0 ? (
           <p className="py-8 text-center text-sm text-gray-500">No registered users yet.</p>
         ) : (
           <div className="space-y-3">
             {users.map((user) => (
               <div
-                key={user.email}
+                key={user.id}
                 className="grid gap-3 rounded-lg border border-gray-100 bg-gray-50 p-4 md:grid-cols-[1fr_12rem_7rem]"
               >
                 <div>
                   <p className="font-semibold text-gray-900">{user.fullName}</p>
-                  <p className="text-sm text-gray-600">{user.email}</p>
+                  <p className="text-sm text-gray-600">{user.email ?? 'No email provided'}</p>
                   <p className="text-sm text-gray-600">{user.phoneNumber}</p>
                   <span className={user.role ? 'badge-green mt-2 inline-block' : 'badge-yellow mt-2 inline-block'}>
                     {user.role ? roleLabels[user.role] : 'Waiting for role'}
@@ -156,11 +141,11 @@ export default function AdminDashboard() {
                 </div>
 
                 <select
-                  value={selectedRoles[user.email] ?? 'CITIZEN'}
+                  value={selectedRoles[user.id] ?? 'CITIZEN'}
                   onChange={(event) =>
                     setSelectedRoles((roles) => ({
                       ...roles,
-                      [user.email]: event.target.value as UserRole,
+                      [user.id]: event.target.value as UserRole,
                     }))
                   }
                   className="input-field h-10"
@@ -172,7 +157,7 @@ export default function AdminDashboard() {
                   ))}
                 </select>
 
-                <button type="button" onClick={() => assignRole(user.email)} className="btn-primary h-10">
+                <button type="button" onClick={() => assignRole(user.id)} className="btn-primary h-10">
                   Assign
                 </button>
               </div>

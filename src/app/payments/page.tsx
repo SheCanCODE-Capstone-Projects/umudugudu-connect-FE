@@ -22,8 +22,8 @@ import {
 } from 'lucide-react';
 import type { PaymentMethod, PenaltyStatus, UserRole } from '@/types';
 import LogoutButton from '@/components/shared/LogoutButton';
+import { getStoredAuthUser } from '@/lib/auth/session';
 
-const CURRENT_USER_KEY = 'umudugudu_current_user';
 const PENALTIES_KEY = 'umudugudu_penalties';
 const PAYMENTS_KEY = 'umudugudu_payments';
 const USER_NOTIFICATIONS_KEY = 'umudugudu_user_notifications';
@@ -227,7 +227,7 @@ export default function PaymentsPage() {
   const [activeTab, setActiveTab] = useState<'pending' | 'history'>('pending');
 
   useEffect(() => {
-    const user = getJson<CurrentUser | null>(sessionStorage, CURRENT_USER_KEY, null);
+    const user = getStoredAuthUser() as CurrentUser | null;
     setCurrentUser(user);
 
     if (!user) return;

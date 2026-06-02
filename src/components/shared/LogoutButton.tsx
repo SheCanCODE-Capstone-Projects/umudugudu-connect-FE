@@ -3,9 +3,9 @@
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { LogOut } from 'lucide-react';
-const CURRENT_USER_KEY = 'umudugudu_current_user';
-const PENDING_OTP_KEY = 'umudugudu_pending_otp_login';
-const GOOGLE_OAUTH_STATE_KEY = 'umudugudu_google_oauth_state';
+import { useAppDispatch } from '@/hooks/redux';
+import { clearAuthSession, hasAuthSession } from '@/lib/auth/session';
+import { clearAuth } from '@/store/slices/authSlice';
 
 type LogoutButtonProps = {
   className?: string;
@@ -17,7 +17,7 @@ export function useRedirectLoggedOut() {
 
   useEffect(() => {
     const redirectIfLoggedOut = () => {
-      if (!sessionStorage.getItem(CURRENT_USER_KEY)) {
+      if (!hasAuthSession()) {
         router.replace('/auth/login');
       }
     };
@@ -39,11 +39,11 @@ export function useRedirectLoggedOut() {
 
 export default function LogoutButton({ className = '', showLabel = false }: LogoutButtonProps) {
   const router = useRouter();
+  const dispatch = useAppDispatch();
 
   const logout = () => {
-    sessionStorage.removeItem(CURRENT_USER_KEY);
-    sessionStorage.removeItem(PENDING_OTP_KEY);
-    sessionStorage.removeItem(GOOGLE_OAUTH_STATE_KEY);
+    clearAuthSession();
+    dispatch(clearAuth());
     router.replace('/auth/login');
   };
 

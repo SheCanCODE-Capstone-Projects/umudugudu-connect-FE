@@ -8,8 +8,8 @@ import {
   Bell, CalendarDays, ChevronLeft, CreditCard, FileText,
   Grid2X2, Home, Info, Megaphone, Settings, UserRound, UsersRound,
 } from 'lucide-react';
+import { getStoredAuthUser } from '@/lib/auth/session';
 
-const CURRENT_USER_KEY = 'umudugudu_current_user';
 const USER_NOTIFICATIONS_KEY = 'umudugudu_user_notifications';
 
 type CurrentUser = {
@@ -194,7 +194,7 @@ export default function NotificationsPage() {
   });
 
   useEffect(() => {
-    const user = getJson<CurrentUser | null>(sessionStorage, CURRENT_USER_KEY, null);
+    const user = getStoredAuthUser() as CurrentUser | null;
     setCurrentUser(user);
     if (!user) return;
     const allNotifications = getJson<UserNotification[]>(localStorage, USER_NOTIFICATIONS_KEY, []);
